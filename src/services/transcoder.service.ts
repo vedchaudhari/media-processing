@@ -1,14 +1,17 @@
 import { spawn } from "node:child_process";
+import path from "node:path";
 
 interface TranscodeVariantArgs {
   inputPath: string;
-  outputPath: string;
+  outputDir: string;
   height: number;
   bitrate: number;
+  segmentDuration?: number;
 }
 
 /**
- * Transcodes a single variant of a video with FFmpeg.
+ * Transcodes a single variant of a video into HLS (an .m3u8 playlist plus
+ * .ts segments) with FFmpeg.
  *
  * Responsibility: ONE variant only. Uses spawn (not execFile) because
  * transcoding is long-running and streams progress/output to stderr.
@@ -16,9 +19,10 @@ interface TranscodeVariantArgs {
  */
 export const transcodeVariant = ({
   inputPath,
-  outputPath,
+  outputDir,
   height,
   bitrate,
+  segmentDuration = 6,
 }: TranscodeVariantArgs): Promise<void> => {
   return new Promise((resolve, reject) => {
     const args = [
@@ -40,10 +44,15 @@ export const transcodeVariant = ({
       "aac",
       "-b:a",
       "128k",
-      "-movflags",
-      "+faststart",
+      // HLS output: a VOD playlist referencing fixed-duration .ts segments
+      "-hls_time",
+      String(segmentDuration),
+      "-hls_playlist_type",
+      "vod",
+      "-hls_segment_filename",
+      path.join(outputDir, "segment_%03d.ts"),
       "-y",
-      outputPath,
+      path.join(outputDir, "playlist.m3u8"),
     ];
 
     const ffmpeg = spawn("ffmpeg", args);
@@ -66,4 +75,26 @@ export const transcodeVariant = ({
       }
     });
   });
+};
+
+export interface MasterPlaylistEntry {
+  height: number;
+  width: number;
+  bitrate: number;
+}
+
+/**
+ * Builds an HLS master playlist that lists every rendition. Each entry points
+ * at the variant's playlist via a relative path (`<height>p/playlist.m3u8`),
+ * so the master must be uploaded at the root of the `hls/` prefix.
+ */
+export const buildMasterPlaylist = (entries: MasterPlaylistEntry[]): string => {
+  const lines = ["#EXTM3U", "#EXT-X-VERSION:3"];
+  for (const { height, width, bitrate } of entries) {
+    lines.push(
+      `#EXT-X-STREAM-INF:BANDWIDTH=${bitrate},RESOLUTION=${width}x${height}`
+    );
+    lines.push(`${height}p/playlist.m3u8`);
+  }
+  return lines.join("\n") + "\n";
 };

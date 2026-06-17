@@ -3,6 +3,7 @@ import cors from "cors";
 import { env } from "./config/envconfig.js";
 import { connectDB } from "./config/db.js";
 import videoRoutes from "./routes/video.routes.js";
+import { runStartupTasks } from "./startup/index.js";
 
 const app = express();
 const PORT = env.port;
@@ -20,10 +21,12 @@ app.get("/health", (_req: Request, res: Response) => {
 // Routes
 app.use("/api/videos", videoRoutes);
 
-connectDB().then(() => {
-  app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+connectDB()
+  .then(runStartupTasks)
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
   });
-});
 
 export default app;

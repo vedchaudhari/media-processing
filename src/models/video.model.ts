@@ -33,6 +33,16 @@ export interface IGeneratedFile {
   objectKey?: string;
 }
 
+export interface IStreamingVariant {
+  resolution?: string;
+  playlist?: string;
+}
+
+export interface IStreaming {
+  masterPlaylist?: string;
+  variants?: IStreamingVariant[];
+}
+
 export interface IVideo extends Document {
   title?: string;
   objectKey?: string;
@@ -40,6 +50,7 @@ export interface IVideo extends Document {
   metadata?: IVideoMetadata;
   variants?: IVideoVariant[];
   generatedFiles?: IGeneratedFile[];
+  streaming?: IStreaming;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -75,6 +86,15 @@ const videoSchema = new Schema<IVideo>(
         objectKey: { type: String },
       },
     ],
+    streaming: {
+      masterPlaylist: { type: String },
+      variants: [
+        {
+          resolution: { type: String },
+          playlist: { type: String },
+        },
+      ],
+    },
   },
   {
     timestamps: true,
