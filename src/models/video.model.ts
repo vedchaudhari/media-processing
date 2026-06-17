@@ -43,6 +43,8 @@ export interface IStreaming {
   variants?: IStreamingVariant[];
 }
 
+export type FailedStage = "inspection" | "planning" | "transcoding";
+
 export interface IVideo extends Document {
   title?: string;
   objectKey?: string;
@@ -51,6 +53,9 @@ export interface IVideo extends Document {
   variants?: IVideoVariant[];
   generatedFiles?: IGeneratedFile[];
   streaming?: IStreaming;
+  failedStage?: FailedStage;
+  error?: string;
+  failedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -95,6 +100,9 @@ const videoSchema = new Schema<IVideo>(
         },
       ],
     },
+    failedStage: { type: String },
+    error: { type: String },
+    failedAt: { type: Date },
   },
   {
     timestamps: true,

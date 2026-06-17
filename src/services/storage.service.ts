@@ -23,6 +23,27 @@ export const createBucket = async (bucketName: string): Promise<void> => {
 };
 
 /**
+ * Returns true if an object exists in the bucket. Used to confirm a client
+ * actually uploaded the file before we kick off processing.
+ */
+export const objectExists = async (
+  bucketName: string,
+  objectKey: string
+): Promise<boolean> => {
+  try {
+    await minioClient.statObject(bucketName, objectKey);
+    return true;
+  } catch (err) {
+    // MinIO throws a NotFound/code "NoSuchKey" error when the object is absent
+    if (err && typeof err === "object" && "code" in err) {
+      const code = (err as { code?: string }).code;
+      if (code === "NotFound" || code === "NoSuchKey") return false;
+    }
+    throw err; // anything else (auth, network) is a real error
+  }
+};
+
+/**
  * Downloads an object from MinIO storage to a local file path.
  */
 export const downloadObject = async (

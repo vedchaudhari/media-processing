@@ -15,9 +15,10 @@ const plannerWorker = new Worker(
     console.log(`Planning... videoId: ${videoId}`);
 
     try {
+      // clear any failure context from a previous attempt (retries reuse the doc)
       const video = await Video.findByIdAndUpdate(
         videoId,
-        { status: "planning" },
+        { status: "planning", $unset: { failedStage: "", error: "", failedAt: "" } },
         { returnDocument: "after" }
       );
 
@@ -44,7 +45,12 @@ const plannerWorker = new Worker(
       // plan is ready, so hand off to the transcoder
       await transcoderQueue.add("transcode-video", { videoId });
     } catch (err) {
-      await Video.findByIdAndUpdate(videoId, { status: "failed" });
+      await Video.findByIdAndUpdate(videoId, {
+        status: "failed",
+        failedStage: "planning",
+        error: err instanceof Error ? err.message : String(err),
+        failedAt: new Date(),
+      });
       throw err; // let BullMQ record the job as failed
     }
   },

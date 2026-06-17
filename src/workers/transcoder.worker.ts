@@ -34,9 +34,10 @@ const transcoderWorker = new Worker(
     const uploadedKeys: string[] = [];
 
     try {
+      // clear any failure context from a previous attempt (retries reuse the doc)
       const video = await Video.findByIdAndUpdate(
         videoId,
-        { status: "transcoding" },
+        { status: "transcoding", $unset: { failedStage: "", error: "", failedAt: "" } },
         { returnDocument: "after" }
       );
 
@@ -132,7 +133,12 @@ const transcoderWorker = new Worker(
     } catch (err) {
       // all-or-nothing: clean up any partial uploads and fail the whole job
       await removeObjects(VIDEO_BUCKET, uploadedKeys);
-      await Video.findByIdAndUpdate(videoId, { status: "failed" });
+      await Video.findByIdAndUpdate(videoId, {
+        status: "failed",
+        failedStage: "transcoding",
+        error: err instanceof Error ? err.message : String(err),
+        failedAt: new Date(),
+      });
       throw err; // let BullMQ record the job as failed
     } finally {
       await fs.promises.rm(workDir, { recursive: true, force: true });

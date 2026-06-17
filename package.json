@@ -3,6 +3,7 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^25.9.2",
+    "concurrently": "^10.0.3",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3"
   },
@@ -13,6 +14,7 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "dev:all": "concurrently -n api,inspection,planner,transcoder -c blue,green,yellow,magenta \"npm:dev\" \"npm:worker:inspection\" \"npm:worker:planner\" \"npm:worker:transcoder\"",
     "worker:inspection": "tsx watch src/workers/inspection.worker.ts",
     "worker:planner": "tsx watch src/workers/planner.worker.ts",
     "worker:transcoder": "tsx watch src/workers/transcoder.worker.ts",

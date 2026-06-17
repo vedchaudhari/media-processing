@@ -23,7 +23,11 @@ const inspectionWorker = new Worker(
     console.log(`Inspecting... videoId: ${videoId}`);
 
     try {
-      await Video.findByIdAndUpdate(videoId, { status: "inspecting" });
+      // clear any failure context from a previous attempt (retries reuse the doc)
+      await Video.findByIdAndUpdate(videoId, {
+        status: "inspecting",
+        $unset: { failedStage: "", error: "", failedAt: "" },
+      });
 
       // the destination directory must exist before fGetObject writes to it
       await fs.promises.mkdir(workDir, { recursive: true });
@@ -48,7 +52,12 @@ const inspectionWorker = new Worker(
       // metadata is ready, so hand off to the planner
       await plannerQueue.add("plan-video", { videoId });
     } catch (err) {
-      await Video.findByIdAndUpdate(videoId, { status: "failed" });
+      await Video.findByIdAndUpdate(videoId, {
+        status: "failed",
+        failedStage: "inspection",
+        error: err instanceof Error ? err.message : String(err),
+        failedAt: new Date(),
+      });
       throw err;
     } finally {
       // remove the whole per-video temp folder (no-op if it was never created)
