@@ -1,6 +1,6 @@
 import { Queue } from "bullmq";
 import { redisConnection } from "../config/redis.js";
-import { defaultJobOptions } from "./options.js";
+import { defaultJobOptions } from "../config/queueconfig.js";
 
 export const INSPECTION_QUEUE = "inspection";
 

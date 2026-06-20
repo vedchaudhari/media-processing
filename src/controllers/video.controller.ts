@@ -1,6 +1,8 @@
 import { type Request, type Response } from "express";
+import mongoose from "mongoose";
 import { v4 as uuidv4 } from "uuid";
 import Video from "../models/video.model.js";
+import { env } from "../config/envconfig.js";
 import { minioClient, VIDEO_BUCKET } from "../config/minio.js";
 import { objectExists } from "../services/storage.service.js";
 import { inspectionQueue } from "../queue/inspection.queue.js";
@@ -103,6 +105,76 @@ export const completeUpload = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("completeUpload failed:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+/**
+ * Lists all videos, newest first. Returns a lightweight projection (no heavy
+ * metadata/variants/streaming) suitable for a list/dashboard view.
+ */
+export const listVideos = async (_req: Request, res: Response) => {
+  try {
+    const videos = await Video.find()
+      .select("title status createdAt")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const result = videos.map((v) => ({
+      id: v._id,
+      title: v.title,
+      status: v.status,
+    }));
+
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error("listVideos failed:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+/**
+ * Returns the URL the frontend (HLS.js) points at to play a finished video.
+ *
+ * The HLS outputs live under a public-read prefix (see setHlsPublicReadPolicy),
+ * so we just hand back the master playlist's direct MinIO URL. The player
+ * resolves the variant playlists and .ts segments from there on its own.
+ */
+export const getPlay = async (req: Request, res: Response) => {
+  try {
+    const { videoId } = req.params;
+
+    if (!videoId || !mongoose.isValidObjectId(videoId)) {
+      return res.status(400).json({ success: false, message: "Invalid video id" });
+    }
+
+    const video = await Video.findById(videoId);
+
+    if (!video) {
+      return res.status(404).json({ success: false, message: "Video not found" });
+    }
+
+    // only a fully transcoded video is playable; surface the current status so
+    // the frontend can show "still processing" / "failed" instead of erroring.
+    if (video.status !== "completed" || !video.streaming?.masterPlaylist) {
+      return res.status(409).json({
+        success: false,
+        videoId: video._id,
+        status: video.status,
+        message: "Video is not ready for playback",
+      });
+    }
+
+    const playbackUrl = `${env.minio.publicUrl}/${VIDEO_BUCKET}/${video.streaming.masterPlaylist}`;
+
+    return res.status(200).json({
+      success: true,
+      videoId: video._id,
+      status: video.status,
+      playbackUrl,
+    });
+  } catch (error) {
+    console.error("getPlay failed:", error);
     return res.status(500).json({ message: "Internal server error" });
   }
 };

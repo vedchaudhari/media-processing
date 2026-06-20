@@ -1,12 +1,17 @@
 import { VIDEO_BUCKET } from "../config/minio.js";
-import { createBucket } from "../services/storage.service.js";
+import {
+  createBucket,
+  setHlsPublicReadPolicy,
+} from "../services/storage.service.js";
 
 /**
- * Ensures all MinIO buckets the app depends on exist.
+ * Ensures all MinIO buckets the app depends on exist and that HLS outputs are
+ * publicly readable for direct playback (originals stay private).
  */
 const initStorage = async (): Promise<void> => {
   await createBucket(VIDEO_BUCKET);
-  console.log(`Storage ready: bucket "${VIDEO_BUCKET}" ensured`);
+  await setHlsPublicReadPolicy(VIDEO_BUCKET);
+  console.log(`Storage ready: bucket "${VIDEO_BUCKET}" ensured (hls/ public-read)`);
 };
 
 /**

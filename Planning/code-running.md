@@ -1,7 +1,10 @@
-# Running the Pipeline — Start to End (curl)
+# Running the Pipeline — Start to End (Postman)
 
 End-to-end steps to process a video through the whole pipeline:
 `uploaded → inspecting → inspected → planning → planned → transcoding → completed`.
+
+API calls are done in Postman; the prerequisite/terminal commands stay in a
+shell.
 
 ## 1. Prerequisites (one-time / per session)
 
@@ -28,56 +31,54 @@ npm run worker:transcoder    # transcoder worker
 ```
 
 ## 3. Health check
-```bash
-curl http://localhost:3000/health
-# expected: {"status":"okay"}
-```
+- Method: **GET**
+- URL: `http://localhost:3000/health`
+- Send → expected body: `{"status":"okay"}`
 
 ## 4. Initiate upload (returns videoId, objectKey, uploadUrl)
-```bash
-curl -s -X POST http://localhost:3000/api/videos/initiate-upload \
-  -H "Content-Type: application/json" \
-  -d '{"title":"my first video"}'
-```
-Example response:
-```json
-{
-  "success": true,
-  "videoId": "6a304291d3e6d24349f31688",
-  "objectKey": "videos/<uuid>/original.mp4",
-  "uploadUrl": "http://localhost:9000/videos/<uuid>/original.mp4?X-Amz-..."
-}
-```
+- Method: **POST**
+- URL: `http://localhost:3000/api/videos/initiate-upload`
+- Body → **raw** → type **JSON**:
+  ```json
+  { "title": "my first video" }
+  ```
+- Send. Example response:
+  ```json
+  {
+    "success": true,
+    "videoId": "6a304291d3e6d24349f31688",
+    "objectKey": "videos/<uuid>/original.mp4",
+    "uploadUrl": "http://localhost:9000/videos/<uuid>/original.mp4?X-Amz-..."
+  }
+  ```
+- Copy `videoId` and `uploadUrl` for the next steps.
 
 ## 5. Upload the actual video file (PUT to the presigned URL)
-`--upload-file` makes it a PUT. Quote the URL (it has query params).
-```bash
-curl -X PUT --upload-file "/f/path/to/video.mp4" "<PASTE_uploadUrl_HERE>"
-```
+- Method: **PUT**
+- URL: paste the **`uploadUrl`** from step 4 whole (keep the `?X-Amz-...` query).
+- Body → **binary** → **Select File** → pick your `.mp4`.
+- Do NOT add a `Content-Type` header and do NOT use form-data — it must be the
+  raw file as the body.
+- Send → success is **200 OK** with an empty body.
 
 ## 6. Complete the upload (starts the pipeline)
-```bash
-curl -X POST http://localhost:3000/api/videos/<PASTE_videoId_HERE>/complete-upload
-# expected: {"success":true,"videoId":"...","status":"uploaded"}
-```
+- Method: **POST**
+- URL: `http://localhost:3000/api/videos/<PASTE_videoId_HERE>/complete-upload`
+- No body needed.
+- Send → expected: `{"success":true,"videoId":"...","status":"uploaded"}`
 
 ---
 
-## All-in-one (steps 4–6 with jq)
-Set `FILE` to your video path, paste, and run:
-```bash
-FILE="/f/path/to/video.mp4"
-
-RES=$(curl -s -X POST http://localhost:3000/api/videos/initiate-upload \
-  -H "Content-Type: application/json" -d '{"title":"my first video"}')
-
-VIDEO_ID=$(echo "$RES" | jq -r '.videoId')
-UPLOAD_URL=$(echo "$RES" | jq -r '.uploadUrl')
-echo "videoId: $VIDEO_ID"
-
-curl -X PUT --upload-file "$FILE" "$UPLOAD_URL"
-curl -X POST "http://localhost:3000/api/videos/$VIDEO_ID/complete-upload"
+## Tip: reuse `videoId` / `uploadUrl` automatically (optional)
+In Postman you can avoid copy-pasting by saving response values into variables.
+On the **step 4** request, add a **Scripts → Post-response** snippet:
+```js
+const res = pm.response.json();
+pm.collectionVariables.set("videoId", res.videoId);
+pm.collectionVariables.set("uploadUrl", res.uploadUrl);
 ```
+Then in later requests use `{{videoId}}` and `{{uploadUrl}}` in the URL, e.g.
+`http://localhost:3000/api/videos/{{videoId}}/complete-upload`.
 
 ---
 
@@ -88,11 +89,36 @@ After step 6, in order:
 - transcoder:  `Transcoding...` → `Progress... 33% / 66% / 100%` → `Transcoded video: {...}`
 
 ## 8. Verify the result
-No GET endpoint yet — check the outputs directly:
-- MinIO (http://localhost:9001) → `videos/<uuid>/` has `original.mp4` + `1080p.mp4`, `720p.mp4`, `480p.mp4`
-  (which renditions depend on the source resolution).
+Check the outputs directly:
+- MinIO (http://localhost:9001) → `videos/<uuid>/` has `original.mp4` plus an
+  `hls/` tree: `hls/master.m3u8` and per-rendition `hls/720p/`, `hls/480p/` …
+  (each with `playlist.m3u8` + `segment_*.ts`; which renditions depend on the
+  source resolution).
 - MongoDB (Atlas → `videos` collection) → record at `status: "completed"` with
-  `metadata`, `variants`, and `generatedFiles`.
+  `metadata`, `variants`, `generatedFiles`, and `streaming.masterPlaylist`.
+
+## 9. Get the playback URL
+- Method: **GET**
+- URL: `http://localhost:3000/api/videos/<PASTE_videoId_HERE>/play`
+- Send. Example response:
+  ```json
+  {
+    "success": true,
+    "videoId": "6a304291d3e6d24349f31688",
+    "status": "completed",
+    "playbackUrl": "http://localhost:9000/videos/<uuid>/hls/master.m3u8"
+  }
+  ```
+- If `status` isn't `completed` yet → `409` with the current status (still
+  processing / failed).
+- The HLS outputs are served public-read (the app sets this policy on startup),
+  so the URL is directly fetchable — no signing needed. To confirm in Postman,
+  do **GET** requests on:
+  - `<playbackUrl>` → returns the master playlist (lists renditions)
+  - `http://localhost:9000/videos/<uuid>/hls/720p/playlist.m3u8` → lists segments
+
+If the master + a variant playlist come back as text (not `403`), HLS.js can
+play the video by pointing at `playbackUrl`.
 
 ---
 
@@ -104,3 +130,5 @@ No GET endpoint yet — check the outputs directly:
 | job fails with `ENOENT` | `ffmpeg` / `ffprobe` not on PATH |
 | `ECONNREFUSED ...:9000` | MinIO not running (`docker compose up -d`) |
 | `ECONNREFUSED ...:6379` | wrong/missing `REDIS_URL`, or managed Redis unreachable |
+| playback URL → `403` / `AccessDenied` | public-read policy not applied — restart the API (`npm run dev`) so startup re-applies it |
+| `/play` → `409` | video not `completed` yet (or transcode failed) — check status/workers |
