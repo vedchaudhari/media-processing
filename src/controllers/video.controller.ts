@@ -39,7 +39,7 @@ export const completeUpload = async (req: Request, res: Response) => {
   try {
     const { videoId } = req.params;
 
-    if (typeof videoId !== "string") {
+    if (!videoId || !mongoose.isValidObjectId(videoId)) {
       return res.status(400).json({ success: false, message: "Invalid video id" });
     }
 
@@ -116,7 +116,7 @@ export const completeUpload = async (req: Request, res: Response) => {
 export const listVideos = async (_req: Request, res: Response) => {
   try {
     const videos = await Video.find()
-      .select("title status createdAt")
+      .select("title status progress createdAt")
       .sort({ createdAt: -1 })
       .lean();
 
@@ -124,6 +124,8 @@ export const listVideos = async (_req: Request, res: Response) => {
       id: v._id,
       title: v.title,
       status: v.status,
+      progress: v.progress ?? 0,
+      createdAt: v.createdAt,
     }));
 
     return res.status(200).json(result);
@@ -161,6 +163,7 @@ export const getPlay = async (req: Request, res: Response) => {
         success: false,
         videoId: video._id,
         status: video.status,
+        progress: video.progress ?? 0,
         message: "Video is not ready for playback",
       });
     }
@@ -170,6 +173,7 @@ export const getPlay = async (req: Request, res: Response) => {
     return res.status(200).json({
       success: true,
       videoId: video._id,
+      title: video.title,
       status: video.status,
       playbackUrl,
     });

@@ -22,4 +22,15 @@ export const env = {
     publicUrl:
       process.env.MINIO_PUBLIC_URL || `http://${minioEndPoint}:${minioPort}`,
   },
+  transcode: {
+    // FFmpeg H.264 video encoder. Defaults to NVIDIA hardware encoding
+    // (h264_nvenc) — far faster than CPU. Set VIDEO_ENCODER=libx264 to fall
+    // back to software encoding on machines without an NVIDIA GPU.
+    videoEncoder: process.env.VIDEO_ENCODER || "h264_nvenc",
+    // Max number of variants to transcode at once within a single job. Capped
+    // because (a) consumer NVIDIA GPUs limit simultaneous NVENC sessions and
+    // (b) software encoding saturates the CPU. 2 is a safe default for both;
+    // raise it on a beefy box / data-center GPU via TRANSCODE_CONCURRENCY.
+    concurrency: Math.max(1, Number(process.env.TRANSCODE_CONCURRENCY) || 2),
+  },
 } as const;

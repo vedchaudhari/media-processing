@@ -5,6 +5,7 @@ import { Worker, type Job } from "bullmq";
 import { redisConnection } from "../config/redis.js";
 import { TRANSCODER_QUEUE } from "../queue/transcoder.queue.js";
 import { connectDB } from "../config/db.js";
+import { registerGracefulShutdown } from "../config/shutdown.js";
 import {
   downloadObject,
   uploadObject,
@@ -17,7 +18,42 @@ import {
   type MasterPlaylistEntry,
 } from "../services/transcoder.service.js";
 import { VIDEO_BUCKET } from "../config/minio.js";
+import { env } from "../config/envconfig.js";
 import Video, { type IStreamingVariant } from "../models/video.model.js";
+
+/**
+ * Runs `task` over every item with at most `limit` running concurrently, and
+ * ALWAYS settles every item (never short-circuits) so the caller can inspect
+ * each outcome and roll back side effects. Results are returned in input order.
+ *
+ * This replaces a bare `Promise.allSettled(items.map(...))`, which would launch
+ * one FFmpeg process per variant simultaneously — fine for CPU bursts, but it
+ * exceeds NVENC's concurrent-session limit on consumer NVIDIA GPUs and can
+ * saturate CPU/RAM for software encodes.
+ */
+async function settleWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  task: (item: T, index: number) => Promise<R>
+): Promise<PromiseSettledResult<R>[]> {
+  const results: PromiseSettledResult<R>[] = new Array(items.length);
+  let cursor = 0;
+
+  const worker = async (): Promise<void> => {
+    while (cursor < items.length) {
+      const index = cursor++;
+      try {
+        results[index] = { status: "fulfilled", value: await task(items[index]!, index) };
+      } catch (reason) {
+        results[index] = { status: "rejected", reason };
+      }
+    }
+  };
+
+  const lanes = Math.max(1, Math.min(limit, items.length));
+  await Promise.all(Array.from({ length: lanes }, worker));
+  return results;
+}
 
 await connectDB();
 
@@ -37,7 +73,11 @@ const transcoderWorker = new Worker(
       // clear any failure context from a previous attempt (retries reuse the doc)
       const video = await Video.findByIdAndUpdate(
         videoId,
-        { status: "transcoding", $unset: { failedStage: "", error: "", failedAt: "" } },
+        {
+          status: "transcoding",
+          progress: 0,
+          $unset: { failedStage: "", error: "", failedAt: "" },
+        },
         { returnDocument: "after" }
       );
 
@@ -63,12 +103,15 @@ const transcoderWorker = new Worker(
       const total = video.variants.length;
       let done = 0;
 
-      // transcode every variant in parallel; each one is an independent
-      // FFmpeg process writing to its own folder, so they don't collide.
-      // Promise.allSettled (not Promise.all) lets every task finish even if
-      // one fails, so `uploadedKeys` is complete before any rollback runs.
-      const results = await Promise.allSettled(
-        video.variants.map(async (variant, i) => {
+      // Transcode variants with bounded concurrency. Each one is an independent
+      // FFmpeg process writing to its own folder, so they don't collide, but we
+      // cap how many run at once (NVENC session limits / CPU saturation).
+      // settleWithConcurrency never short-circuits, so `uploadedKeys` is
+      // complete before any rollback runs.
+      const results = await settleWithConcurrency(
+        video.variants,
+        env.transcode.concurrency,
+        async (variant, i) => {
           const { height, bitrate } = variant;
 
           if (!height || !bitrate) {
@@ -87,10 +130,14 @@ const transcoderWorker = new Worker(
           );
           uploadedKeys.push(...keys);
 
-          await job.updateProgress(Math.round((++done / total) * 100));
+          // report progress to BullMQ and persist it on the doc so the API
+          // (and frontend) can show a real % bar while transcoding.
+          const progress = Math.round((++done / total) * 100);
+          await job.updateProgress(progress);
+          await Video.findByIdAndUpdate(videoId, { progress });
 
           return { height, width: widthFor(height), bitrate };
-        })
+        }
       );
 
       // if any rendition failed, fail the whole job (uploads already rolled
@@ -125,14 +172,24 @@ const transcoderWorker = new Worker(
         {
           streaming: { masterPlaylist: masterKey, variants: streamingVariants },
           status: "completed",
+          progress: 100,
         },
         { returnDocument: "after" }
       );
 
       console.log("Transcoded video:", JSON.stringify(completed, null, 2));
     } catch (err) {
-      // all-or-nothing: clean up any partial uploads and fail the whole job
-      await removeObjects(VIDEO_BUCKET, uploadedKeys);
+      // all-or-nothing: clean up any partial uploads and fail the whole job.
+      // Cleanup is best-effort — a failure here must NOT prevent marking the
+      // video failed or mask the original error that caused the job to fail.
+      try {
+        await removeObjects(VIDEO_BUCKET, uploadedKeys);
+      } catch (cleanupErr) {
+        console.error(
+          `Rollback cleanup failed for ${videoId} (orphaned objects may remain):`,
+          cleanupErr
+        );
+      }
       await Video.findByIdAndUpdate(videoId, {
         status: "failed",
         failedStage: "transcoding",
@@ -151,5 +208,9 @@ const transcoderWorker = new Worker(
 transcoderWorker.on("progress", (job, progress) => {
   console.log(`Progress... videoId: ${job.data.videoId} -> ${progress}%`);
 });
+
+// drain the in-flight (long-running) transcode and release connections on
+// SIGINT/SIGTERM. close() waits for the active job, capped by the force timer.
+registerGracefulShutdown({ worker: transcoderWorker });
 
 export default transcoderWorker;

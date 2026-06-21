@@ -6,6 +6,7 @@ import { redisConnection } from "../config/redis.js";
 import { INSPECTION_QUEUE } from "../queue/inspection.queue.js";
 import { plannerQueue } from "../queue/planner.queue.js";
 import { connectDB } from "../config/db.js";
+import { registerGracefulShutdown } from "../config/shutdown.js";
 import { downloadObject } from "../services/storage.service.js";
 import { inspectVideo } from "../services/ffprobe.service.js";
 import { VIDEO_BUCKET } from "../config/minio.js";
@@ -66,5 +67,8 @@ const inspectionWorker = new Worker(
   },
   { connection: redisConnection }
 );
+
+// drain the in-flight job and release connections on SIGINT/SIGTERM
+registerGracefulShutdown({ worker: inspectionWorker, queues: [plannerQueue] });
 
 export default inspectionWorker;

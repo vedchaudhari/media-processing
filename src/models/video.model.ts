@@ -1,15 +1,20 @@
 import mongoose, { Schema, Document, Model } from "mongoose";
 
-export type VideoStatus =
-  | "uploading"
-  | "uploaded"
-  | "inspecting"
-  | "inspected"
-  | "planning"
-  | "planned"
-  | "transcoding"
-  | "completed"
-  | "failed";
+// Single source of truth for valid statuses. The TS union and the Mongoose
+// schema `enum` are both derived from this array so they can never drift.
+export const VIDEO_STATUSES = [
+  "uploading",
+  "uploaded",
+  "inspecting",
+  "inspected",
+  "planning",
+  "planned",
+  "transcoding",
+  "completed",
+  "failed",
+] as const;
+
+export type VideoStatus = (typeof VIDEO_STATUSES)[number];
 
 export interface IVideoMetadata {
   width?: number;
@@ -49,6 +54,8 @@ export interface IVideo extends Document {
   title?: string;
   objectKey?: string;
   status: VideoStatus;
+  // 0–100 transcoding progress; meaningful while status is "transcoding".
+  progress?: number;
   metadata?: IVideoMetadata;
   variants?: IVideoVariant[];
   generatedFiles?: IGeneratedFile[];
@@ -66,8 +73,10 @@ const videoSchema = new Schema<IVideo>(
     objectKey: { type: String },
     status: {
       type: String,
+      enum: [...VIDEO_STATUSES],
       default: "uploading",
     },
+    progress: { type: Number, default: 0 },
     metadata: {
       width: { type: Number },
       height: { type: Number },

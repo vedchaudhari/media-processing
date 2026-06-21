@@ -3,6 +3,7 @@ import { redisConnection } from "../config/redis.js";
 import { PLANNER_QUEUE } from "../queue/planner.queue.js";
 import { transcoderQueue } from "../queue/transcoder.queue.js";
 import { connectDB } from "../config/db.js";
+import { registerGracefulShutdown } from "../config/shutdown.js";
 import { planVariants } from "../services/planner.service.js";
 import Video from "../models/video.model.js";
 
@@ -56,5 +57,8 @@ const plannerWorker = new Worker(
   },
   { connection: redisConnection }
 );
+
+// drain the in-flight job and release connections on SIGINT/SIGTERM
+registerGracefulShutdown({ worker: plannerWorker, queues: [transcoderQueue] });
 
 export default plannerWorker;

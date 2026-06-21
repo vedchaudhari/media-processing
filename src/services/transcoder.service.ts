@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
+import { env } from "../config/envconfig.js";
 
 interface TranscodeVariantArgs {
   inputPath: string;
@@ -8,6 +9,53 @@ interface TranscodeVariantArgs {
   bitrate: number;
   segmentDuration?: number;
 }
+
+/**
+ * Builds the encoder-specific FFmpeg args for one variant.
+ *
+ * - h264_nvenc: NVIDIA hardware encoding. Offloads the expensive encode to the
+ *   GPU's dedicated encoder chip, so renditions can run in parallel without
+ *   saturating the CPU. Uses NVENC preset `p4` (balanced) and VBR with a
+ *   bitrate cap to mirror the software ladder.
+ * - libx264: CPU software encoding fallback (`fast` preset).
+ *
+ * Scaling stays on the CPU (`scale=-2:height`) in both cases — it's cheap
+ * relative to encoding and keeps the pipeline portable.
+ */
+const videoEncoderArgs = (bitrate: number): string[] => {
+  const encoder = env.transcode.videoEncoder;
+
+  if (encoder === "h264_nvenc") {
+    return [
+      "-c:v",
+      "h264_nvenc",
+      "-preset",
+      "p4",
+      "-rc",
+      "vbr",
+      "-b:v",
+      String(bitrate),
+      "-maxrate",
+      String(bitrate),
+      "-bufsize",
+      String(bitrate * 2),
+    ];
+  }
+
+  // software fallback (libx264 or any other configured CPU encoder)
+  return [
+    "-c:v",
+    encoder,
+    "-b:v",
+    String(bitrate),
+    "-maxrate",
+    String(bitrate),
+    "-bufsize",
+    String(bitrate * 2),
+    "-preset",
+    "fast",
+  ];
+};
 
 /**
  * Transcodes a single variant of a video into HLS (an .m3u8 playlist plus
@@ -30,20 +78,21 @@ export const transcodeVariant = ({
       inputPath,
       "-vf",
       `scale=-2:${height}`, // keep aspect ratio; width auto-computed, kept even
-      "-c:v",
-      "libx264",
-      "-b:v",
-      String(bitrate),
-      "-maxrate",
-      String(bitrate),
-      "-bufsize",
-      String(bitrate * 2),
-      "-preset",
-      "fast",
+      ...videoEncoderArgs(bitrate),
+      // 8-bit 4:2:0 for the broadest player/HLS compatibility. Applied to ALL
+      // encoders: a 10-bit source would otherwise make libx264 emit High 10
+      // H.264, which browsers/MSE cannot decode (silent black-screen playback).
+      "-pix_fmt",
+      "yuv420p",
       "-c:a",
       "aac",
       "-b:a",
       "128k",
+      // Downmix to stereo. Source 5.1/multichannel AAC (esp. with an unknown
+      // channel layout) fails to decode in browsers via MSE/hls.js, which
+      // stalls playback (black screen). 2 channels is universally playable.
+      "-ac",
+      "2",
       // HLS output: a VOD playlist referencing fixed-duration .ts segments
       "-hls_time",
       String(segmentDuration),
