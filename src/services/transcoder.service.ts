@@ -17,13 +17,18 @@ interface TranscodeVariantArgs {
  *   GPU's dedicated encoder chip, so renditions can run in parallel without
  *   saturating the CPU. Uses NVENC preset `p4` (balanced) and VBR with a
  *   bitrate cap to mirror the software ladder.
+ * - h264_videotoolbox: Apple hardware encoding (macOS / Apple Silicon). Uses
+ *   the same bitrate cap, but takes NO libx264-style `-preset` — VideoToolbox
+ *   rejects that option and ffmpeg would abort.
  * - libx264: CPU software encoding fallback (`fast` preset).
  *
- * Scaling stays on the CPU (`scale=-2:height`) in both cases — it's cheap
+ * Scaling stays on the CPU (`scale=-2:height`) in all cases — it's cheap
  * relative to encoding and keeps the pipeline portable.
  */
 const videoEncoderArgs = (bitrate: number): string[] => {
   const encoder = env.transcode.videoEncoder;
+  const rate = String(bitrate);
+  const bufsize = String(bitrate * 2);
 
   if (encoder === "h264_nvenc") {
     return [
@@ -34,11 +39,24 @@ const videoEncoderArgs = (bitrate: number): string[] => {
       "-rc",
       "vbr",
       "-b:v",
-      String(bitrate),
+      rate,
       "-maxrate",
-      String(bitrate),
+      rate,
       "-bufsize",
-      String(bitrate * 2),
+      bufsize,
+    ];
+  }
+
+  if (encoder === "h264_videotoolbox") {
+    return [
+      "-c:v",
+      "h264_videotoolbox",
+      "-b:v",
+      rate,
+      "-maxrate",
+      rate,
+      "-bufsize",
+      bufsize,
     ];
   }
 
@@ -47,11 +65,11 @@ const videoEncoderArgs = (bitrate: number): string[] => {
     "-c:v",
     encoder,
     "-b:v",
-    String(bitrate),
+    rate,
     "-maxrate",
-    String(bitrate),
+    rate,
     "-bufsize",
-    String(bitrate * 2),
+    bufsize,
     "-preset",
     "fast",
   ];

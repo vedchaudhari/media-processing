@@ -1,4 +1,5 @@
 import * as dotenv from "dotenv";
+import { detectEncoder } from "./encoder.js";
 
 // Load environment variables ONCE, here, before anything reads them.
 // Every other module imports `env` from this file instead of touching
@@ -23,10 +24,11 @@ export const env = {
       process.env.MINIO_PUBLIC_URL || `http://${minioEndPoint}:${minioPort}`,
   },
   transcode: {
-    // FFmpeg H.264 video encoder. Defaults to NVIDIA hardware encoding
-    // (h264_nvenc) — far faster than CPU. Set VIDEO_ENCODER=libx264 to fall
-    // back to software encoding on machines without an NVIDIA GPU.
-    videoEncoder: process.env.VIDEO_ENCODER || "h264_nvenc",
+    // FFmpeg H.264 video encoder. When VIDEO_ENCODER is unset we auto-detect
+    // the best available encoder (h264_nvenc → h264_videotoolbox → libx264),
+    // so the same code runs on an NVIDIA box, a Mac, or a plain CPU host. Set
+    // VIDEO_ENCODER explicitly to force a specific encoder.
+    videoEncoder: process.env.VIDEO_ENCODER || detectEncoder(),
     // Max number of variants to transcode at once within a single job. Capped
     // because (a) consumer NVIDIA GPUs limit simultaneous NVENC sessions and
     // (b) software encoding saturates the CPU. 2 is a safe default for both;
