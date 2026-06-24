@@ -34,5 +34,14 @@ export const env = {
     // (b) software encoding saturates the CPU. 2 is a safe default for both;
     // raise it on a beefy box / data-center GPU via TRANSCODE_CONCURRENCY.
     concurrency: Math.max(1, Number(process.env.TRANSCODE_CONCURRENCY) || 2),
+    // Max number of videos (BullMQ jobs) the transcoder worker processes at
+    // once. Default 1 means a big video blocks smaller ones queued behind it.
+    // Raise via TRANSCODE_JOB_CONCURRENCY to transcode multiple videos in
+    // parallel. Note: total concurrent FFmpeg processes ≈ jobConcurrency ×
+    // concurrency, so size both against your CPU/GPU (and NVENC session limits).
+    jobConcurrency: Math.max(
+      1,
+      Number(process.env.TRANSCODE_JOB_CONCURRENCY) || 2
+    ),
   },
 } as const;

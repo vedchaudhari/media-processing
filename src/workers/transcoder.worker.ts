@@ -201,7 +201,7 @@ const transcoderWorker = new Worker(
       await fs.promises.rm(workDir, { recursive: true, force: true });
     }
   },
-  { connection: redisConnection }
+  { connection: redisConnection, concurrency: env.transcode.jobConcurrency }
 );
 
 // log progress ticks (the values reported via job.updateProgress)
