@@ -5,6 +5,7 @@ import { Worker, type Job } from "bullmq";
 import { redisConnection } from "../config/redis.js";
 import { INSPECTION_QUEUE } from "../queue/inspection.queue.js";
 import { plannerQueue } from "../queue/planner.queue.js";
+import { thumbnailQueue } from "../queue/thumbnail.queue.js";
 import { connectDB } from "../config/db.js";
 import { registerGracefulShutdown } from "../config/shutdown.js";
 import { downloadObject } from "../services/storage.service.js";
@@ -50,8 +51,12 @@ const inspectionWorker = new Worker(
 
       console.log("Inspected video:", JSON.stringify(video, null, 2));
 
-      // metadata is ready, so hand off to the planner
-      await plannerQueue.add("plan-video", { videoId });
+      // metadata is ready — fan out to planner (pipeline) and thumbnail
+      // (independent, non-blocking) in parallel.
+      await Promise.all([
+        plannerQueue.add("plan-video", { videoId }),
+        thumbnailQueue.add("generate-thumbnail", { videoId }),
+      ]);
     } catch (err) {
       await Video.findByIdAndUpdate(videoId, {
         status: "failed",
@@ -69,6 +74,6 @@ const inspectionWorker = new Worker(
 );
 
 // drain the in-flight job and release connections on SIGINT/SIGTERM
-registerGracefulShutdown({ worker: inspectionWorker, queues: [plannerQueue] });
+registerGracefulShutdown({ worker: inspectionWorker, queues: [plannerQueue, thumbnailQueue] });
 
 export default inspectionWorker;

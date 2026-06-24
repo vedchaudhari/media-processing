@@ -23,16 +23,16 @@ export const createBucket = async (bucketName: string): Promise<void> => {
 };
 
 /**
- * Grants anonymous read-only access to HLS outputs only (keys matching
- * `<bucket>/*​/hls/*`), leaving everything else (e.g. `original.mp4`) private.
+ * Grants anonymous read-only access to public assets — HLS outputs and
+ * thumbnails — leaving everything else (e.g. `original.mp4`) private.
  *
  * HLS playlists reference their child playlists and .ts segments by relative
  * path, so the signature on a presigned URL is lost on those follow-up
  * requests. Making the whole hls/ tree public-readable lets a browser/HLS.js
- * fetch every file directly. This is the simplest playback path — no expiry
- * and no per-user access control.
+ * fetch every file directly. Thumbnails are also public so the frontend can
+ * display them without presigned URLs.
  */
-export const setHlsPublicReadPolicy = async (
+export const setPublicReadPolicy = async (
   bucketName: string
 ): Promise<void> => {
   const policy = {
@@ -44,7 +44,7 @@ export const setHlsPublicReadPolicy = async (
         Action: ["s3:GetObject"],
         Resource: [
           `arn:aws:s3:::${bucketName}/*/hls/*`,
-          // `arn:aws:s3:::${bucketName}/*/original.mp4`,
+          `arn:aws:s3:::${bucketName}/*/thumbnail.jpg`,
         ],
       },
     ],

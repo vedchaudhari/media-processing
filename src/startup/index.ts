@@ -1,7 +1,7 @@
 import { VIDEO_BUCKET } from "../config/minio.js";
 import {
   createBucket,
-  setHlsPublicReadPolicy,
+  setPublicReadPolicy,
 } from "../services/storage.service.js";
 
 /**
@@ -10,8 +10,8 @@ import {
  */
 const initStorage = async (): Promise<void> => {
   await createBucket(VIDEO_BUCKET);
-  await setHlsPublicReadPolicy(VIDEO_BUCKET);
-  console.log(`Storage ready: bucket "${VIDEO_BUCKET}" ensured (hls/ public-read)`);
+  await setPublicReadPolicy(VIDEO_BUCKET);
+  console.log(`Storage ready: bucket "${VIDEO_BUCKET}" ensured (hls/ + thumbnails public-read)`);
 };
 
 /**

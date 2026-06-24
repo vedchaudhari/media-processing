@@ -116,7 +116,7 @@ export const completeUpload = async (req: Request, res: Response) => {
 export const listVideos = async (_req: Request, res: Response) => {
   try {
     const videos = await Video.find()
-      .select("title status progress createdAt")
+      .select("title status progress thumbnail createdAt")
       .sort({ createdAt: -1 })
       .lean();
 
@@ -125,6 +125,9 @@ export const listVideos = async (_req: Request, res: Response) => {
       title: v.title,
       status: v.status,
       progress: v.progress ?? 0,
+      thumbnailUrl: v.thumbnail
+        ? `${env.minio.publicUrl}/${VIDEO_BUCKET}/${v.thumbnail}`
+        : null,
       createdAt: v.createdAt,
     }));
 
@@ -176,6 +179,9 @@ export const getPlay = async (req: Request, res: Response) => {
       title: video.title,
       status: video.status,
       playbackUrl,
+      thumbnailUrl: video.thumbnail
+        ? `${env.minio.publicUrl}/${VIDEO_BUCKET}/${video.thumbnail}`
+        : null,
     });
   } catch (error) {
     console.error("getPlay failed:", error);

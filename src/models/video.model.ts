@@ -56,6 +56,7 @@ export interface IVideo extends Document {
   status: VideoStatus;
   // 0–100 transcoding progress; meaningful while status is "transcoding".
   progress?: number;
+  thumbnail?: string;
   metadata?: IVideoMetadata;
   variants?: IVideoVariant[];
   generatedFiles?: IGeneratedFile[];
@@ -77,6 +78,7 @@ const videoSchema = new Schema<IVideo>(
       default: "uploading",
     },
     progress: { type: Number, default: 0 },
+    thumbnail: { type: String },
     metadata: {
       width: { type: Number },
       height: { type: Number },
