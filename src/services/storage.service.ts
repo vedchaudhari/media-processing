@@ -45,6 +45,7 @@ export const setPublicReadPolicy = async (
         Resource: [
           `arn:aws:s3:::${bucketName}/*/hls/*`,
           `arn:aws:s3:::${bucketName}/*/thumbnail.jpg`,
+          `arn:aws:s3:::${bucketName}/*/transcript.json`,
         ],
       },
     ],

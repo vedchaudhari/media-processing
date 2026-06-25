@@ -48,6 +48,20 @@ export interface IStreaming {
   variants?: IStreamingVariant[];
 }
 
+export interface ITranscriptSegment {
+  start: number;
+  end: number;
+  text: string;
+}
+
+export interface ITranscript {
+  status: "pending" | "processing" | "completed" | "failed";
+  text?: string;
+  segments?: ITranscriptSegment[];
+  objectKey?: string;
+  error?: string;
+}
+
 export type FailedStage = "inspection" | "planning" | "transcoding";
 
 export interface IVideo extends Document {
@@ -57,6 +71,7 @@ export interface IVideo extends Document {
   // 0–100 transcoding progress; meaningful while status is "transcoding".
   progress?: number;
   thumbnail?: string;
+  transcript?: ITranscript;
   metadata?: IVideoMetadata;
   variants?: IVideoVariant[];
   generatedFiles?: IGeneratedFile[];
@@ -79,6 +94,23 @@ const videoSchema = new Schema<IVideo>(
     },
     progress: { type: Number, default: 0 },
     thumbnail: { type: String },
+    transcript: {
+      status: {
+        type: String,
+        enum: ["pending", "processing", "completed", "failed"],
+        default: "pending",
+      },
+      text: { type: String },
+      segments: [
+        {
+          start: { type: Number },
+          end: { type: Number },
+          text: { type: String },
+        },
+      ],
+      objectKey: { type: String },
+      error: { type: String },
+    },
     metadata: {
       width: { type: Number },
       height: { type: Number },

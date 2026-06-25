@@ -9,33 +9,30 @@
 
 | Area                           | Status              | Approx. complete |
 | ------------------------------ | ------------------- | ---------------- |
-| Backend — core pipeline        | ✅ Working           | ~95%             |
-| Backend — production hardening | ✅ Mostly done       | ~75%             |
-| Frontend — full dashboard      | ✅ Built end-to-end  | ~90%             |
+| Backend — core pipeline        | ✅ Completed        | 100%             |
+| Backend — production hardening | ✅ Mostly done       | ~80%             |
+| Frontend — full dashboard      | ✅ Built end-to-end  | ~95%             |
 | Tests                          | 🟡 Basic unit tests  | ~25%             |
-| Infrastructure / local dev     | 🟡 Partial           | ~60%             |
+| Infrastructure / local dev     | 🟡 Partial           | ~65%             |
 | Auth / deployment              | ❌ Not started       | 0%               |
-| **Overall project**            | ✅ **Functional end-to-end; auth + deploy remain** | **~80%** |
+| **Overall project**            | ✅ **Functional end-to-end; auth + deploy remain** | **~85%** |
 
-The app now works **end to end**: upload a video on the website → watch its
-status advance live (with a transcode % bar) → play the finished adaptive HLS
-stream. Remaining work is **auth, deployment, and broader test coverage**.
+The app now works **end to end**: upload a video on the website → watch its status advance live (with a transcode % bar) → play the finished adaptive HLS stream alongside an interactive, synced transcript. Remaining work is **auth, deployment, and broader test coverage**.
 
 ---
 
 ## ✅ Completed
 
 ### Backend — core pipeline
-- [x] TypeScript/ESM project, `tsx` dev runner, API + 3 worker processes (`dev:all`).
+- [x] TypeScript/ESM project, `tsx` dev runner, API + 5 worker processes (`dev:all`).
 - [x] Config layer: typed `env`, MongoDB, Redis (BullMQ-ready), MinIO, queue defaults.
 - [x] `Video` model with full status state machine + `progress` field.
-- [x] Upload API: `initiate-upload` (presigned PUT), `complete-upload` (atomic
-      claim + storage verification), `get-videos`, `:id/play`.
-- [x] Queues + workers: inspection (ffprobe) → planner (ladder) → transcoder
-      (FFmpeg → HLS → MinIO), with retry/backoff and per-stage failure tracking.
-- [x] Startup tasks: ensure bucket + HLS public-read policy.
-- [x] Transcode progress persisted + exposed; GPU (`h264_nvenc`) encoding;
-      stereo audio downmix.
+- [x] Upload API: `initiate-upload` (presigned PUT), `complete-upload` (atomic claim + storage verification), `get-videos`, `:id/play`.
+- [x] Queues + workers: inspection (ffprobe) → planner (renditions) → transcoder (FFmpeg → HLS → MinIO) with retry/backoff.
+- [x] Startup tasks: ensure bucket + public-read policies for HLS, thumbnails, and transcripts.
+- [x] Transcode progress persisted + exposed; GPU (`h264_nvenc`) encoding; stereo audio downmix.
+- [x] Thumbnail generation (asynchronous JPEG extraction at 25% of duration, uploaded and stored).
+- [x] Automatic transcription pipeline (isolated Python venv, `faster-whisper` on extracted mono WAV, uploaded JSON, interactive synced UI).
 
 ### Backend — production hardening (this round)
 - [x] **ObjectId validation** in `complete-upload` (bad id → 400, not 500).

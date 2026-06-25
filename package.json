@@ -14,11 +14,12 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "dev:all": "concurrently -n api,inspection,planner,transcoder,thumbnail -c blue,green,yellow,magenta,cyan \"npm:dev\" \"npm:worker:inspection\" \"npm:worker:planner\" \"npm:worker:transcoder\" \"npm:worker:thumbnail\"",
+    "dev:all": "concurrently -n api,inspection,planner,transcoder,thumbnail,transcript -c blue,green,yellow,magenta,cyan,gray \"npm:dev\" \"npm:worker:inspection\" \"npm:worker:planner\" \"npm:worker:transcoder\" \"npm:worker:thumbnail\" \"npm:worker:transcript\"",
     "worker:inspection": "tsx watch src/workers/inspection.worker.ts",
     "worker:planner": "tsx watch src/workers/planner.worker.ts",
     "worker:transcoder": "tsx watch src/workers/transcoder.worker.ts",
     "worker:thumbnail": "tsx watch src/workers/thumbnail.worker.ts",
+    "worker:transcript": "tsx watch src/workers/transcript.worker.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "node --import tsx --test \"src/**/*.test.ts\""
