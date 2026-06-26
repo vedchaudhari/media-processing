@@ -1,6 +1,12 @@
 # Dependencies
 node_modules/
 
+# Python (Whisper transcription venv + caches)
+python/.venv/
+.venv/
+__pycache__/
+*.py[cod]
+
 # Build output
 dist/
 build/
