@@ -183,6 +183,7 @@ export const getPlay = async (req: Request, res: Response) => {
         ? `${env.minio.publicUrl}/${VIDEO_BUCKET}/${video.thumbnail}`
         : null,
       transcript: video.transcript ?? null,
+      aiSummary: video.aiSummary ?? null,
     });
   } catch (error) {
     console.error("getPlay failed:", error);

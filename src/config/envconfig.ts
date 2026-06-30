@@ -44,4 +44,11 @@ export const env = {
       Number(process.env.TRANSCODE_JOB_CONCURRENCY) || 2
     ),
   },
+  ai: {
+    providerType: process.env.AI_PROVIDER || (process.env.NODE_ENV === "production" ? "gemini" : "ollama"),
+    openaiApiKey: process.env.OPENAI_API_KEY || "",
+    openaiModel: process.env.OPENAI_MODEL || "gpt-4o-mini",
+    ollamaEndpoint: process.env.OLLAMA_ENDPOINT || "http://localhost:11434",
+    ollamaModel: process.env.OLLAMA_MODEL || "qwen3:4b",
+  },
 } as const;

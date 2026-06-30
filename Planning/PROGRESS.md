@@ -17,14 +17,14 @@
 | Auth / deployment              | ❌ Not started       | 0%               |
 | **Overall project**            | ✅ **Functional end-to-end; auth + deploy remain** | **~85%** |
 
-The app now works **end to end**: upload a video on the website → watch its status advance live (with a transcode % bar) → play the finished adaptive HLS stream alongside an interactive, synced transcript. Remaining work is **auth, deployment, and broader test coverage**.
+The app now works **end to end**: upload a video on the website → watch its status advance live (with a transcode % bar) → play the finished adaptive HLS stream alongside an interactive, synced transcript and AI-generated summary insights. Remaining work is **auth, deployment, and broader test coverage**.
 
 ---
 
 ## ✅ Completed
 
 ### Backend — core pipeline
-- [x] TypeScript/ESM project, `tsx` dev runner, API + 5 worker processes (`dev:all`).
+- [x] TypeScript/ESM project, `tsx` dev runner, API + 6 worker processes (`dev:all`).
 - [x] Config layer: typed `env`, MongoDB, Redis (BullMQ-ready), MinIO, queue defaults.
 - [x] `Video` model with full status state machine + `progress` field.
 - [x] Upload API: `initiate-upload` (presigned PUT), `complete-upload` (atomic claim + storage verification), `get-videos`, `:id/play`.
@@ -33,6 +33,7 @@ The app now works **end to end**: upload a video on the website → watch its st
 - [x] Transcode progress persisted + exposed; GPU (`h264_nvenc`) encoding; stereo audio downmix.
 - [x] Thumbnail generation (asynchronous JPEG extraction at 25% of duration, uploaded and stored).
 - [x] Automatic transcription pipeline (isolated Python venv, `faster-whisper` on extracted mono WAV, uploaded JSON, interactive synced UI).
+- [x] AI Summarizer queue & worker (runs automatically after transcription completes, querying local Ollama or production Gemini/OpenAI to write structured summary JSON to MongoDB).
 
 ### Backend — production hardening (this round)
 - [x] **ObjectId validation** in `complete-upload` (bad id → 400, not 500).
@@ -44,7 +45,7 @@ The app now works **end to end**: upload a video on the website → watch its st
       respects NVENC session limits / avoids CPU saturation.
 - [x] **Rollback hardening** — cleanup failure no longer masks the real error
       or skips marking the video failed.
-- [x] **Graceful shutdown** for API + all 3 workers (drain in-flight job,
+- [x] **Graceful shutdown** for API + all 4 workers (drain in-flight job,
       disconnect Mongo/Redis, force-exit safety timer).
 - [x] **Deep `/health`** — checks MongoDB, Redis, and MinIO; returns 503 if any
       dependency is down.
@@ -57,6 +58,7 @@ The app now works **end to end**: upload a video on the website → watch its st
       is in progress, empty/loading/error states.
 - [x] **Player page** — `hls.js` (with native-HLS fallback + cleanup),
       processing/failed states, transcode % bar.
+- [x] **AI Insights & Transcript tab switcher** — interactive tab panel to toggle between transcription seeking and AI summary insights (summary paragraph, bulleted takeaways, and keyword tags).
 
 ### Tests
 - [x] Unit tests (Node test runner via `tsx`): planner ladder rules +

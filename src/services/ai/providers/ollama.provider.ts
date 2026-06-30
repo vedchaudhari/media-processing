@@ -1,0 +1,64 @@
+import type { AIProvider } from "../ai-provider.js";
+import type { SummaryInput, SummaryOutput } from "../types.js";
+import { buildSummaryPrompt } from "../prompts.js";
+import { env } from "../../../config/envconfig.js";
+
+export class OllamaProvider implements AIProvider {
+  async generateSummary(input: SummaryInput): Promise<SummaryOutput> {
+    const prompt = buildSummaryPrompt(input.transcript);
+    const endpoint = env.ai.ollamaEndpoint;
+    const model = env.ai.ollamaModel;
+
+    const response = await fetch(`${endpoint}/api/generate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        prompt,
+        stream: false,
+        format: "json",
+        // Disable thinking/reasoning if supported by the model/API
+        think: false,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Ollama error: ${response.statusText}`);
+    }
+
+    const data = (await response.json()) as {
+      response?: string;
+      thinking?: string;
+      error?: string;
+    };
+
+    if (data.error) {
+      throw new Error(`Ollama API error: ${data.error}`);
+    }
+
+    // Get output content, falling back to thinking/reasoning property if response is empty
+    let cleanText = (data.response || "").trim();
+    if (!cleanText && data.thinking) {
+      console.log("[AI] Response was empty, using model's 'thinking' field as fallback");
+      cleanText = data.thinking.trim();
+    }
+
+    if (!cleanText) {
+      throw new Error(`Ollama returned no content in response or thinking. Full response: ${JSON.stringify(data)}`);
+    }
+    if (cleanText.startsWith("```json")) {
+      cleanText = cleanText.substring(7);
+    }
+    if (cleanText.startsWith("```")) {
+      cleanText = cleanText.substring(3);
+    }
+    if (cleanText.endsWith("```")) {
+      cleanText = cleanText.substring(0, cleanText.length - 3);
+    }
+    cleanText = cleanText.trim();
+
+    return JSON.parse(cleanText) as SummaryOutput;
+  }
+}

@@ -62,6 +62,14 @@ export interface ITranscript {
   error?: string;
 }
 
+export interface IAISummary {
+  status: "pending" | "processing" | "completed" | "failed";
+  summary?: string;
+  keyTakeaways?: string[];
+  technologies?: string[];
+  error?: string;
+}
+
 export type FailedStage = "inspection" | "planning" | "transcoding";
 
 export interface IVideo extends Document {
@@ -72,6 +80,7 @@ export interface IVideo extends Document {
   progress?: number;
   thumbnail?: string;
   transcript?: ITranscript;
+  aiSummary?: IAISummary;
   metadata?: IVideoMetadata;
   variants?: IVideoVariant[];
   generatedFiles?: IGeneratedFile[];
@@ -109,6 +118,17 @@ const videoSchema = new Schema<IVideo>(
         },
       ],
       objectKey: { type: String },
+      error: { type: String },
+    },
+    aiSummary: {
+      status: {
+        type: String,
+        enum: ["pending", "processing", "completed", "failed"],
+        default: "pending",
+      },
+      summary: { type: String },
+      keyTakeaways: [{ type: String }],
+      technologies: [{ type: String }],
       error: { type: String },
     },
     metadata: {

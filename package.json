@@ -14,12 +14,13 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "dev:all": "concurrently -n api,inspection,planner,transcoder,thumbnail,transcript -c blue,green,yellow,magenta,cyan,gray \"npm:dev\" \"npm:worker:inspection\" \"npm:worker:planner\" \"npm:worker:transcoder\" \"npm:worker:thumbnail\" \"npm:worker:transcript\"",
+    "dev:all": "concurrently -n api,inspection,planner,transcoder,thumbnail,transcript,ai -c blue,green,yellow,magenta,cyan,gray,red \"npm:dev\" \"npm:worker:inspection\" \"npm:worker:planner\" \"npm:worker:transcoder\" \"npm:worker:thumbnail\" \"npm:worker:transcript\" \"npm:worker:ai\"",
     "worker:inspection": "tsx watch src/workers/inspection.worker.ts",
     "worker:planner": "tsx watch src/workers/planner.worker.ts",
     "worker:transcoder": "tsx watch src/workers/transcoder.worker.ts",
     "worker:thumbnail": "tsx watch src/workers/thumbnail.worker.ts",
     "worker:transcript": "tsx watch src/workers/transcript.worker.ts",
+    "worker:ai": "tsx watch src/workers/ai.worker.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "node --import tsx --test \"src/**/*.test.ts\""
@@ -28,6 +29,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@google/genai": "^2.10.0",
     "bullmq": "^5.78.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",

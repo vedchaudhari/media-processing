@@ -10,6 +10,8 @@ import { downloadObject, uploadObject } from "../services/storage.service.js";
 import { extractAudio, runTranscription } from "../services/transcript.service.js";
 import { VIDEO_BUCKET } from "../config/minio.js";
 import Video from "../models/video.model.js";
+import { aiQueue } from "../queue/ai.queue.js";
+
 
 await connectDB();
 
@@ -65,6 +67,9 @@ const transcriptWorker = new Worker(
         },
       });
 
+      // 8. Queue AI summary job
+      await aiQueue.add("generate-summary", { videoId });
+
       console.log(`Transcription completed: ${transcriptKey}`);
     } catch (err) {
       console.error(`Transcription failed for ${videoId}:`, err);
@@ -81,6 +86,6 @@ const transcriptWorker = new Worker(
   { connection: redisConnection }
 );
 
-registerGracefulShutdown({ worker: transcriptWorker });
+registerGracefulShutdown({ worker: transcriptWorker, queues: [aiQueue] });
 
 export default transcriptWorker;
