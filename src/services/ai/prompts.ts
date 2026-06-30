@@ -1,9 +1,14 @@
 export const buildSummaryPrompt = (transcript: string): string => {
+  const maxChars = 150_000; // ~30k words safety limit
+  const safeTranscript = transcript.length > maxChars
+    ? transcript.substring(0, maxChars) + "\n\n[Transcript truncated due to length limits...]"
+    : transcript;
+
   return `You are an AI video content analyzer. Your task is to analyze the following video transcript and generate a structured summary in JSON format.
 
 Transcript:
 """
-${transcript}
+${safeTranscript}
 """
 
 You MUST respond with a JSON object matching this schema:
