@@ -30,13 +30,22 @@ const aiWorker = new Worker(
         throw new Error(`Video ${videoId} not found`);
       }
 
-      const transcript = video.transcript?.text;
+      const transcript = video.transcript?.text?.trim();
       if (!transcript) {
-        throw new Error(`No transcript found for video ${videoId}`);
+        // No speech in the video → nothing to summarize. This is a normal
+        // terminal outcome, not a failure, so mark it "skipped" and stop
+        // (don't throw — a retry wouldn't produce a transcript either).
+        console.log(`[AI] No transcript text for ${videoId}; skipping summary`);
+        await Video.findByIdAndUpdate(videoId, {
+          "aiSummary.status": "skipped",
+          $unset: { "aiSummary.error": "" },
+        });
+        return;
       }
+      const segments = video.transcript?.segments;
 
-      // 2. Generate summary
-      const result = await AIService.generateSummary({ transcript });
+      // 2. Generate summary + chapters
+      const result = await AIService.generateSummary({ transcript, segments });
 
       // 3. Save summary back to Video doc
       await Video.findByIdAndUpdate(videoId, {
@@ -44,6 +53,7 @@ const aiWorker = new Worker(
         "aiSummary.summary": result.summary,
         "aiSummary.keyTakeaways": result.keyTakeaways,
         "aiSummary.technologies": result.technologies,
+        "aiSummary.chapters": result.chapters,
       });
 
       console.log(`[AI] Summary completed for ${videoId}`);

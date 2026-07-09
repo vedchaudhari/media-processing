@@ -62,11 +62,19 @@ export interface ITranscript {
   error?: string;
 }
 
+export interface IChapter {
+  start: number;
+  title: string;
+}
+
 export interface IAISummary {
-  status: "pending" | "processing" | "completed" | "failed";
+  // "skipped" = there was no transcript text to summarize (e.g. a video with
+  // no speech); a terminal, non-error outcome distinct from "failed".
+  status: "pending" | "processing" | "completed" | "failed" | "skipped";
   summary?: string;
   keyTakeaways?: string[];
   technologies?: string[];
+  chapters?: IChapter[];
   error?: string;
 }
 
@@ -123,12 +131,18 @@ const videoSchema = new Schema<IVideo>(
     aiSummary: {
       status: {
         type: String,
-        enum: ["pending", "processing", "completed", "failed"],
+        enum: ["pending", "processing", "completed", "failed", "skipped"],
         default: "pending",
       },
       summary: { type: String },
       keyTakeaways: [{ type: String }],
       technologies: [{ type: String }],
+      chapters: [
+        {
+          start: { type: Number },
+          title: { type: String },
+        },
+      ],
       error: { type: String },
     },
     metadata: {

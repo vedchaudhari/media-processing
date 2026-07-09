@@ -5,7 +5,7 @@ import { env } from "../../../config/envconfig.js";
 
 export class OllamaProvider implements AIProvider {
   async generateSummary(input: SummaryInput): Promise<SummaryOutput> {
-    const prompt = buildSummaryPrompt(input.transcript);
+    const prompt = buildSummaryPrompt(input.transcript, input.segments);
     const endpoint = env.ai.ollamaEndpoint;
     const model = env.ai.ollamaModel;
 

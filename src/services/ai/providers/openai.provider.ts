@@ -5,7 +5,7 @@ import { env } from "../../../config/envconfig.js";
 
 export class OpenAIProvider implements AIProvider {
   async generateSummary(input: SummaryInput): Promise<SummaryOutput> {
-    const prompt = buildSummaryPrompt(input.transcript);
+    const prompt = buildSummaryPrompt(input.transcript, input.segments);
     const apiKey = env.ai.openaiApiKey;
     const model = env.ai.openaiModel;
 

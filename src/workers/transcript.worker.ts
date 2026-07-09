@@ -67,8 +67,18 @@ const transcriptWorker = new Worker(
         },
       });
 
-      // 8. Queue AI summary job
-      await aiQueue.add("generate-summary", { videoId });
+      // 8. Queue AI summary job — but only if there's actual speech to
+      // summarize. A silent video yields an empty transcript, so mark the
+      // summary "skipped" (a terminal, non-error state) instead of enqueuing a
+      // job that would have nothing to work with.
+      if (typeof transcriptData.text === "string" && transcriptData.text.trim()) {
+        await aiQueue.add("generate-summary", { videoId });
+      } else {
+        await Video.findByIdAndUpdate(videoId, {
+          "aiSummary.status": "skipped",
+        });
+        console.log(`No transcript text for ${videoId}; skipping AI summary`);
+      }
 
       console.log(`Transcription completed: ${transcriptKey}`);
     } catch (err) {

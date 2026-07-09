@@ -46,13 +46,18 @@ const plannerWorker = new Worker(
       // plan is ready, so hand off to the transcoder
       await transcoderQueue.add("transcode-video", { videoId });
     } catch (err) {
-      await Video.findByIdAndUpdate(videoId, {
-        status: "failed",
-        failedStage: "planning",
-        error: err instanceof Error ? err.message : String(err),
-        failedAt: new Date(),
-      });
-      throw err; // let BullMQ record the job as failed
+      // Only mark the video "failed" once retries are exhausted; earlier
+      // attempts will be retried by BullMQ after a backoff.
+      const isFinalAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
+      if (isFinalAttempt) {
+        await Video.findByIdAndUpdate(videoId, {
+          status: "failed",
+          failedStage: "planning",
+          error: err instanceof Error ? err.message : String(err),
+          failedAt: new Date(),
+        });
+      }
+      throw err; // let BullMQ record the job as failed (and retry if attempts remain)
     }
   },
   { connection: redisConnection }

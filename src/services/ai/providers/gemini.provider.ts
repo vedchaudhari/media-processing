@@ -13,7 +13,7 @@ export class GeminiProvider implements AIProvider {
   }
 
   async generateSummary(input: SummaryInput): Promise<SummaryOutput> {
-    const prompt = buildSummaryPrompt(input.transcript);
+    const prompt = buildSummaryPrompt(input.transcript, input.segments);
 
     const response = await this.client.models.generateContent({
       model: process.env.GEMINI_MODEL || "gemini-2.5-flash",

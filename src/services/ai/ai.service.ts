@@ -30,6 +30,8 @@ export class AIService {
   }
 
   static async generateSummary(input: SummaryInput): Promise<SummaryOutput> {
-    return this.getProvider().generateSummary(input);
+    const out = await this.getProvider().generateSummary(input);
+    // Guarantee chapters is always an array even if a model omits the field.
+    return { ...out, chapters: Array.isArray(out.chapters) ? out.chapters : [] };
   }
 }

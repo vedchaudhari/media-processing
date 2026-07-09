@@ -1,10 +1,16 @@
 import * as dotenv from "dotenv";
 import { detectEncoder } from "./encoder.js";
+import { configureDns } from "./dns.js";
 
 // Load environment variables ONCE, here, before anything reads them.
 // Every other module imports `env` from this file instead of touching
 // process.env directly — so importing them guarantees dotenv has run.
 dotenv.config();
+
+// Apply any DNS_SERVERS override now — this MUST run before the Mongo/Redis/
+// MinIO clients are constructed (they all import `env`, so this module fully
+// evaluates first). No-op unless DNS_SERVERS is set. See config/dns.ts.
+configureDns();
 
 const minioEndPoint = process.env.MINIO_ENDPOINT || "localhost";
 const minioPort = Number(process.env.MINIO_PORT) || 9000;

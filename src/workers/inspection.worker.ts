@@ -60,12 +60,17 @@ const inspectionWorker = new Worker(
         transcriptQueue.add("transcribe-video", { videoId }),
       ]);
     } catch (err) {
-      await Video.findByIdAndUpdate(videoId, {
-        status: "failed",
-        failedStage: "inspection",
-        error: err instanceof Error ? err.message : String(err),
-        failedAt: new Date(),
-      });
+      // Only mark the video "failed" once retries are exhausted; earlier
+      // attempts will be retried by BullMQ after a backoff.
+      const isFinalAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
+      if (isFinalAttempt) {
+        await Video.findByIdAndUpdate(videoId, {
+          status: "failed",
+          failedStage: "inspection",
+          error: err instanceof Error ? err.message : String(err),
+          failedAt: new Date(),
+        });
+      }
       throw err;
     } finally {
       // remove the whole per-video temp folder (no-op if it was never created)

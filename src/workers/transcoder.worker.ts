@@ -190,13 +190,20 @@ const transcoderWorker = new Worker(
           cleanupErr
         );
       }
-      await Video.findByIdAndUpdate(videoId, {
-        status: "failed",
-        failedStage: "transcoding",
-        error: err instanceof Error ? err.message : String(err),
-        failedAt: new Date(),
-      });
-      throw err; // let BullMQ record the job as failed
+      // Only mark the video "failed" once retries are exhausted. On earlier
+      // attempts BullMQ will retry after a backoff, so leaving the status as-is
+      // keeps the record in an in-progress state instead of briefly advertising
+      // a terminal failure the poller would latch onto.
+      const isFinalAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
+      if (isFinalAttempt) {
+        await Video.findByIdAndUpdate(videoId, {
+          status: "failed",
+          failedStage: "transcoding",
+          error: err instanceof Error ? err.message : String(err),
+          failedAt: new Date(),
+        });
+      }
+      throw err; // let BullMQ record the job as failed (and retry if attempts remain)
     } finally {
       await fs.promises.rm(workDir, { recursive: true, force: true });
     }
