@@ -10,7 +10,7 @@ dotenv.config();
 // Apply any DNS_SERVERS override now — this MUST run before the Mongo/Redis/
 // MinIO clients are constructed (they all import `env`, so this module fully
 // evaluates first). No-op unless DNS_SERVERS is set. See config/dns.ts.
-configureDns();
+// configureDns();
 
 const minioEndPoint = process.env.MINIO_ENDPOINT || "localhost";
 const minioPort = Number(process.env.MINIO_PORT) || 9000;
