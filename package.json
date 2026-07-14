@@ -30,6 +30,7 @@
   "license": "ISC",
   "dependencies": {
     "@google/genai": "^2.10.0",
+    "@qdrant/js-client-rest": "^1.18.0",
     "bullmq": "^5.78.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
