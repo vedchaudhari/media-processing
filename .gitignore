@@ -27,6 +27,7 @@ pnpm-debug.log*
 
 # Runtime / processed media data
 data/
+redis-data/
 
 # Caches
 .cache/
