@@ -88,11 +88,16 @@ const transcriptWorker = new Worker(
       console.log(`Transcription completed: ${transcriptKey}`);
     } catch (err) {
       console.error(`Transcription failed for ${videoId}:`, err);
-      // Update database status to failed, saving the error message
-      await Video.findByIdAndUpdate(videoId, {
-        "transcript.status": "failed",
-        "transcript.error": err instanceof Error ? err.message : String(err),
-      });
+      // Only mark "failed" once retries are exhausted. On earlier attempts the
+      // status stays "processing", so the frontend keeps polling and sees the
+      // retry succeed instead of latching onto a transient failure.
+      const isFinalAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
+      if (isFinalAttempt) {
+        await Video.findByIdAndUpdate(videoId, {
+          "transcript.status": "failed",
+          "transcript.error": err instanceof Error ? err.message : String(err),
+        });
+      }
       throw err; // let BullMQ retry (3 attempts by default)
     } finally {
       await fs.promises.rm(workDir, { recursive: true, force: true });

@@ -10,7 +10,9 @@ import { EmbeddingService } from "../services/ai/embedding.service.js";
 
 await connectDB();
 
-const collectionName = "video_transcripts";
+// Dimension-scoped name (e.g. video_transcripts_768): a provider switch uses a
+// new collection rather than requiring the old one to be deleted.
+const collectionName = EmbeddingService.getCollectionName();
 
 interface Chunk {
   text: string;
@@ -85,29 +87,14 @@ const embeddingWorker = new Worker(
       // 1. Chunk transcript segments
       const chunks = chunkTranscript(plainSegments);
 
-      // 2. Ensure Qdrant collection exists matching the active provider dimensions (with auto-healing for mismatches)
+      // 2. Ensure the Qdrant collection exists. The name embeds the vector
+      // dimension, so a dimension mismatch is impossible by construction — no
+      // destructive delete-and-recreate needed.
       const collections = await qdrantClient.getCollections();
       const exists = collections.collections.some((c) => c.name === collectionName);
       const expectedDimensions = EmbeddingService.getDimension();
-      let shouldCreate = !exists;
 
-      if (exists) {
-        try {
-          const info = await qdrantClient.getCollection(collectionName);
-          const currentSize = (info.config?.params?.vectors as any)?.size;
-          if (currentSize && currentSize !== expectedDimensions) {
-            console.warn(`[Embeddings] Vector dimension mismatch for "${collectionName}": expected ${expectedDimensions}, found ${currentSize}. Re-creating collection...`);
-            await qdrantClient.deleteCollection(collectionName);
-            shouldCreate = true;
-          }
-        } catch (err) {
-          console.error(`[Embeddings] Failed to fetch collection info, recreating...`, err);
-          await qdrantClient.deleteCollection(collectionName).catch(() => {});
-          shouldCreate = true;
-        }
-      }
-
-      if (shouldCreate) {
+      if (!exists) {
         console.log(`[Embeddings] Creating collection "${collectionName}" with ${expectedDimensions} dimensions...`);
         await qdrantClient.createCollection(collectionName, {
           vectors: { size: expectedDimensions, distance: "Cosine" },
@@ -150,10 +137,15 @@ const embeddingWorker = new Worker(
       });
     } catch (err) {
       console.error(`[Embeddings] Embedding failed for ${videoId}:`, err);
-      await Video.findByIdAndUpdate(videoId, {
-        "vectorIndex.status": "failed",
-        "vectorIndex.error": err instanceof Error ? err.message : String(err),
-      });
+      // Only mark "failed" once retries are exhausted — an intermediate
+      // "failed" makes the frontend stop polling and miss a later success.
+      const isFinalAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
+      if (isFinalAttempt) {
+        await Video.findByIdAndUpdate(videoId, {
+          "vectorIndex.status": "failed",
+          "vectorIndex.error": err instanceof Error ? err.message : String(err),
+        });
+      }
       throw err;
     }
   },

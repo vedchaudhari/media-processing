@@ -59,11 +59,15 @@ const aiWorker = new Worker(
       console.log(`[AI] Summary completed for ${videoId}`);
     } catch (err) {
       console.error(`[AI] Summary failed for ${videoId}:`, err);
-      // Save error details to database
-      await Video.findByIdAndUpdate(videoId, {
-        "aiSummary.status": "failed",
-        "aiSummary.error": err instanceof Error ? err.message : String(err),
-      });
+      // Only mark "failed" once retries are exhausted — an intermediate
+      // "failed" makes the frontend stop polling and miss a later success.
+      const isFinalAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
+      if (isFinalAttempt) {
+        await Video.findByIdAndUpdate(videoId, {
+          "aiSummary.status": "failed",
+          "aiSummary.error": err instanceof Error ? err.message : String(err),
+        });
+      }
       throw err; // Allow BullMQ to handle retry/backoff
     }
   },

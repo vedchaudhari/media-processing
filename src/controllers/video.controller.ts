@@ -166,11 +166,19 @@ export const getPlay = async (req: Request, res: Response) => {
     // only a fully transcoded video is playable; surface the current status so
     // the frontend can show "still processing" / "failed" instead of erroring.
     if (video.status !== "completed" || !video.streaming?.masterPlaylist) {
+      // Include the same auxiliary fields as the 200 response — the frontend
+      // reads them in its not-ready branch to show transcript/AI progress.
       return res.status(409).json({
         success: false,
         videoId: video._id,
         status: video.status,
         progress: video.progress ?? 0,
+        thumbnailUrl: video.thumbnail
+          ? `${env.minio.publicUrl}/${VIDEO_BUCKET}/${video.thumbnail}`
+          : null,
+        transcript: video.transcript ?? null,
+        aiSummary: video.aiSummary ?? null,
+        vectorIndex: video.vectorIndex ?? null,
         message: "Video is not ready for playback",
       });
     }
@@ -237,7 +245,10 @@ export const askVideo = async (req: Request, res: Response) => {
       });
     }
 
-    const collectionName = "video_transcripts";
+    // Same dimension-scoped collection the embedding worker writes to. The
+    // worker also creates the payload index at collection-creation time, so no
+    // per-request index management is needed here.
+    const collectionName = EmbeddingService.getCollectionName();
 
     // 1. Check if collection exists
     const collections = await qdrantClient.getCollections();
@@ -248,16 +259,6 @@ export const askVideo = async (req: Request, res: Response) => {
         answer: "AI search is still indexing this video's transcript. Please wait a moment and try again.",
         sources: [],
       });
-    }
-
-    // Ensure payload index exists for "videoId"
-    try {
-      await qdrantClient.createPayloadIndex(collectionName, {
-        field_name: "videoId",
-        field_schema: "keyword",
-      });
-    } catch (e) {
-      // Ignore if index already exists
     }
 
     // 2. Query Qdrant Cloud using Vector Embeddings

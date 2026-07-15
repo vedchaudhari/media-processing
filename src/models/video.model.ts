@@ -83,7 +83,9 @@ export interface IVectorIndex {
   error?: string;
 }
 
-export type FailedStage = "inspection" | "planning" | "transcoding";
+// "upload" = the client initiated an upload but never completed it (marked by
+// the stale-upload sweeper in startup/, since the presigned URL has expired).
+export type FailedStage = "upload" | "inspection" | "planning" | "transcoding";
 
 export interface IVideo extends Document {
   title?: string;

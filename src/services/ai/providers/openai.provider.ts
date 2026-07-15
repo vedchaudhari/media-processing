@@ -22,7 +22,9 @@ export class OpenAIProvider implements AIProvider {
       body: JSON.stringify({
         model,
         input: prompt,
-        response_format: { type: "json_object" },
+        // Responses API JSON mode. (`response_format` is the Chat Completions
+        // spelling and gets rejected with a 400 here.)
+        text: { format: { type: "json_object" } },
       }),
     });
 

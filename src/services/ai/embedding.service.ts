@@ -17,6 +17,15 @@ export class EmbeddingService {
   }
 
   /**
+   * Collection name scoped to the active provider's vector dimension.
+   * Switching AI providers therefore lands in a different collection instead
+   * of colliding with (or destroying) vectors indexed under another dimension.
+   */
+  static getCollectionName(): string {
+    return `video_transcripts_${this.getDimension()}`;
+  }
+
+  /**
    * Generates a vector embedding or returns a Qdrant built-in inference configuration.
    */
   static async embedText(
