@@ -1,7 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import type { AIProvider } from "../ai-provider.js";
 import type { SummaryInput, SummaryOutput } from "../types.js";
-import { buildSummaryPrompt } from "../prompts.js";
+import { buildSummaryPrompt, buildAskPrompt, cleanThinkingTags } from "../prompts.js";
 
 export class GeminiProvider implements AIProvider {
   private readonly client: GoogleGenAI;
@@ -26,6 +26,7 @@ export class GeminiProvider implements AIProvider {
 
     // Safely parse JSON by cleaning markdown fences if present
     let cleanText = response.text.trim();
+    cleanText = cleanThinkingTags(cleanText);
     if (cleanText.startsWith("```json")) {
       cleanText = cleanText.substring(7);
     }
@@ -38,5 +39,20 @@ export class GeminiProvider implements AIProvider {
     cleanText = cleanText.trim();
 
     return JSON.parse(cleanText) as SummaryOutput;
+  }
+
+  async askQuestion(context: string, question: string): Promise<string> {
+    const prompt = buildAskPrompt(context, question);
+
+    const response = await this.client.models.generateContent({
+      model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
+      contents: prompt,
+    });
+
+    if (!response.text) {
+      throw new Error("Gemini returned empty response");
+    }
+
+    return response.text.trim();
   }
 }

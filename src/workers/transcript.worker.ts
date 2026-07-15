@@ -11,6 +11,7 @@ import { extractAudio, runTranscription } from "../services/transcript.service.j
 import { VIDEO_BUCKET } from "../config/minio.js";
 import Video from "../models/video.model.js";
 import { aiQueue } from "../queue/ai.queue.js";
+import { embeddingQueue } from "../queue/embedding.queue.js";
 
 
 await connectDB();
@@ -72,12 +73,16 @@ const transcriptWorker = new Worker(
       // summary "skipped" (a terminal, non-error state) instead of enqueuing a
       // job that would have nothing to work with.
       if (typeof transcriptData.text === "string" && transcriptData.text.trim()) {
-        await aiQueue.add("generate-summary", { videoId });
+        await Promise.all([
+          aiQueue.add("generate-summary", { videoId }),
+          embeddingQueue.add("generate-embeddings", { videoId }),
+        ]);
       } else {
         await Video.findByIdAndUpdate(videoId, {
           "aiSummary.status": "skipped",
+          "vectorIndex.status": "skipped",
         });
-        console.log(`No transcript text for ${videoId}; skipping AI summary`);
+        console.log(`No transcript text for ${videoId}; skipping AI summary & embeddings`);
       }
 
       console.log(`Transcription completed: ${transcriptKey}`);
@@ -96,6 +101,6 @@ const transcriptWorker = new Worker(
   { connection: redisConnection }
 );
 
-registerGracefulShutdown({ worker: transcriptWorker, queues: [aiQueue] });
+registerGracefulShutdown({ worker: transcriptWorker, queues: [aiQueue, embeddingQueue] });
 
 export default transcriptWorker;

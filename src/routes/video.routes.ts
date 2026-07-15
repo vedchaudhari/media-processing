@@ -4,6 +4,7 @@ import {
   completeUpload,
   getPlay,
   listVideos,
+  askVideo,
 } from "../controllers/video.controller.js";
 
 const router = Router();
@@ -19,5 +20,8 @@ router.post("/:videoId/complete-upload", completeUpload);
 
 // GET /videos/:videoId/play
 router.get("/:videoId/play", getPlay);
+
+// POST /videos/:videoId/ask
+router.post("/:videoId/ask", askVideo);
 
 export default router;

@@ -1,6 +1,6 @@
 import type { AIProvider } from "../ai-provider.js";
 import type { SummaryInput, SummaryOutput } from "../types.js";
-import { buildSummaryPrompt } from "../prompts.js";
+import { buildSummaryPrompt, buildAskPrompt, cleanThinkingTags } from "../prompts.js";
 import { env } from "../../../config/envconfig.js";
 
 export class OllamaProvider implements AIProvider {
@@ -45,6 +45,8 @@ export class OllamaProvider implements AIProvider {
       cleanText = data.thinking.trim();
     }
 
+    cleanText = cleanThinkingTags(cleanText);
+
     if (!cleanText) {
       throw new Error(`Ollama returned no content in response or thinking. Full response: ${JSON.stringify(data)}`);
     }
@@ -60,5 +62,45 @@ export class OllamaProvider implements AIProvider {
     cleanText = cleanText.trim();
 
     return JSON.parse(cleanText) as SummaryOutput;
+  }
+
+  async askQuestion(context: string, question: string): Promise<string> {
+    const prompt = buildAskPrompt(context, question);
+    const endpoint = env.ai.ollamaEndpoint;
+    const model = env.ai.ollamaModel;
+
+    const response = await fetch(`${endpoint}/api/generate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        prompt,
+        stream: false,
+        think: false,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Ollama error: ${response.statusText}`);
+    }
+
+    const data = (await response.json()) as {
+      response?: string;
+      thinking?: string;
+      error?: string;
+    };
+
+    if (data.error) {
+      throw new Error(`Ollama API error: ${data.error}`);
+    }
+
+    let cleanText = (data.response || "").trim();
+    if (!cleanText && data.thinking) {
+      cleanText = data.thinking.trim();
+    }
+
+    return cleanText;
   }
 }

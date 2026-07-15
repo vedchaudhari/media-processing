@@ -56,5 +56,11 @@ export const env = {
     openaiModel: process.env.OPENAI_MODEL || "gpt-4o-mini",
     ollamaEndpoint: process.env.OLLAMA_ENDPOINT || "http://localhost:11434",
     ollamaModel: process.env.OLLAMA_MODEL || "qwen3:4b",
+    geminiApiKey: process.env.GEMINI_API_KEY || "",
+    geminiModel: process.env.GEMINI_MODEL || "gemini-2.5-flash",
+  },
+  qdrant: {
+    url: process.env.QDRANT_URL || "",
+    apiKey: process.env.QDRANT_API_KEY || "",
   },
 } as const;

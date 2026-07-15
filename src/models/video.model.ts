@@ -78,6 +78,11 @@ export interface IAISummary {
   error?: string;
 }
 
+export interface IVectorIndex {
+  status: "pending" | "processing" | "completed" | "failed" | "skipped";
+  error?: string;
+}
+
 export type FailedStage = "inspection" | "planning" | "transcoding";
 
 export interface IVideo extends Document {
@@ -89,6 +94,7 @@ export interface IVideo extends Document {
   thumbnail?: string;
   transcript?: ITranscript;
   aiSummary?: IAISummary;
+  vectorIndex?: IVectorIndex;
   metadata?: IVideoMetadata;
   variants?: IVideoVariant[];
   generatedFiles?: IGeneratedFile[];
@@ -143,6 +149,14 @@ const videoSchema = new Schema<IVideo>(
           title: { type: String },
         },
       ],
+      error: { type: String },
+    },
+    vectorIndex: {
+      status: {
+        type: String,
+        enum: ["pending", "processing", "completed", "failed", "skipped"],
+        default: "pending",
+      },
       error: { type: String },
     },
     metadata: {

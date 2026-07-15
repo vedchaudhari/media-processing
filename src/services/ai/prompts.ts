@@ -41,3 +41,37 @@ Rules for "chapters":
 
 Your output must be valid JSON and contain NO other text, markdown formatting blocks (like \`\`\`json), or explanations. Just return the JSON object directly.`;
 };
+
+export const buildAskPrompt = (context: string, question: string): string => {
+  return `You are an AI video assistant. Answer the user's question based strictly on the provided video transcript excerpts.
+
+Transcript Excerpts:
+"""
+${context}
+"""
+
+User Question:
+"${question}"
+
+Instructions:
+1. Answer the question directly, concisely, and contextually using ONLY the transcript excerpts above.
+2. If the answer is not present in the excerpts, say "I couldn't find the answer to that in the video."
+3. Do not make up facts or use outside knowledge.
+4. Keep the answer professional and easy to read.
+5. Do NOT include any internal thoughts, reasoning steps, planning, or monologue. Output ONLY the direct answer.`;
+};
+
+export function cleanThinkingTags(text: string): string {
+  let cleanText = text;
+
+  // 1. Strip <think>...</think> or <thinking>...</thinking> blocks case-insensitively
+  cleanText = cleanText.replace(/<(think|thinking)>[\s\S]*?<\/\1>/gi, "");
+
+  // 2. Strip any plain-text reasoning blocks that start with "Hmm" or "Thinking" and end with "Final decision: ...\n"
+  cleanText = cleanText.replace(/^(?:Hmm|Thinking|Reasoning)[\s\S]*?(?:Final decision|So, the answer is):?[\s\S]*?\n+/i, "");
+
+  // 3. Replace any standalone lingering tags just in case
+  cleanText = cleanText.replace(/<\/?(think|thinking)>/gi, "");
+
+  return cleanText.trim();
+}

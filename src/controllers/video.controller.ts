@@ -6,6 +6,10 @@ import { env } from "../config/envconfig.js";
 import { minioClient, VIDEO_BUCKET } from "../config/minio.js";
 import { objectExists } from "../services/storage.service.js";
 import { inspectionQueue } from "../queue/inspection.queue.js";
+import { qdrantClient } from "../config/qdrant.js";
+import { AIService } from "../services/ai/ai.service.js";
+import { EmbeddingService } from "../services/ai/embedding.service.js";
+
 
 export const initiateUpload = async (req: Request, res: Response) => {
   try {
@@ -184,9 +188,150 @@ export const getPlay = async (req: Request, res: Response) => {
         : null,
       transcript: video.transcript ?? null,
       aiSummary: video.aiSummary ?? null,
+      vectorIndex: video.vectorIndex ?? null,
     });
   } catch (error) {
     console.error("getPlay failed:", error);
     return res.status(500).json({ message: "Internal server error" });
   }
 };
+
+export const askVideo = async (req: Request, res: Response) => {
+  try {
+    const { videoId } = req.params;
+    const { question } = req.body;
+
+    if (!videoId || typeof videoId !== "string" || !mongoose.isValidObjectId(videoId)) {
+      return res.status(400).json({ message: "Invalid video ID" });
+    }
+
+    if (!question || typeof question !== "string" || !question.trim()) {
+      return res.status(400).json({ message: "Question is required" });
+    }
+
+    const video = await Video.findById(videoId);
+    if (!video) {
+      return res.status(404).json({ message: "Video not found" });
+    }
+
+    const indexStatus = video.vectorIndex?.status || "completed";
+    if (indexStatus === "pending" || indexStatus === "processing") {
+      return res.status(200).json({
+        success: true,
+        answer: "AI search is still indexing this video's transcript. Please wait a moment and try again.",
+        sources: [],
+      });
+    }
+    if (indexStatus === "failed") {
+      return res.status(200).json({
+        success: true,
+        answer: "AI search indexing failed for this video. Ask AI is not available.",
+        sources: [],
+      });
+    }
+    if (indexStatus === "skipped") {
+      return res.status(200).json({
+        success: true,
+        answer: "No speech was detected in this video, so Ask AI is not available.",
+        sources: [],
+      });
+    }
+
+    const collectionName = "video_transcripts";
+
+    // 1. Check if collection exists
+    const collections = await qdrantClient.getCollections();
+    const exists = collections.collections.some((c) => c.name === collectionName);
+    if (!exists) {
+      return res.status(200).json({
+        success: true,
+        answer: "AI search is still indexing this video's transcript. Please wait a moment and try again.",
+        sources: [],
+      });
+    }
+
+    // Ensure payload index exists for "videoId"
+    try {
+      await qdrantClient.createPayloadIndex(collectionName, {
+        field_name: "videoId",
+        field_schema: "keyword",
+      });
+    } catch (e) {
+      // Ignore if index already exists
+    }
+
+    // 2. Query Qdrant Cloud using Vector Embeddings
+    console.log(`[Ask AI] Querying Qdrant for videoId: ${videoId}, question: "${question}"`);
+    const queryVector = await EmbeddingService.embedText(question, "query");
+
+    const results = await qdrantClient.query(collectionName, {
+      query: queryVector,
+      filter: {
+        must: [
+          {
+            key: "videoId",
+            match: { value: videoId.toString() },
+          },
+        ],
+      },
+      with_payload: true,
+      limit: 4,
+    });
+
+    if (!results.points || results.points.length === 0) {
+      return res.status(200).json({
+        success: true,
+        answer: "I couldn't find any relevant sections in this video to answer that question.",
+        sources: [],
+      });
+    }
+
+    // 3. Format and filter context segments by relevance score
+    const formatTime = (secs: number) => {
+      const m = Math.floor(secs / 60);
+      const s = Math.floor(secs % 60);
+      return `${m}:${s.toString().padStart(2, "0")}`;
+    };
+
+    const rawPoints = results.points.map((p: any) => ({
+      text: p.payload?.text ?? "",
+      start: p.payload?.start ?? 0,
+      end: p.payload?.end ?? 0,
+      score: p.score ?? 0,
+    }));
+
+    const maxScore = rawPoints.length > 0 ? Math.max(...rawPoints.map((p) => p.score)) : 0;
+
+    // Filter points: keep the best one, plus any others with score >= 0.4
+    const filteredPoints = rawPoints.filter((p) => p.score === maxScore || p.score >= 0.4);
+
+    const contextParts = filteredPoints.map((p) => {
+      return `[Timestamp: ${formatTime(p.start)} - ${formatTime(p.end)}] ${p.text}`;
+    });
+    const context = contextParts.join("\n");
+
+    // 4. Generate answer using AIService
+    console.log(`[Ask AI] Asking provider with context...`);
+    const answer = await AIService.askQuestion(context, question);
+
+    // 5. Build source segments list (de-duplicated and sorted chronologically)
+    const seenStarts = new Set<number>();
+    const sources = filteredPoints
+      .filter((s) => {
+        if (seenStarts.has(s.start)) return false;
+        seenStarts.add(s.start);
+        return true;
+      })
+      .sort((a, b) => a.start - b.start);
+
+    return res.status(200).json({
+      success: true,
+      answer,
+      sources,
+    });
+  } catch (error) {
+    console.error("askVideo failed:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
