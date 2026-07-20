@@ -18,7 +18,7 @@ import { TRANSCRIPT_QUEUE } from "../queue/transcript.queue.js";
 import { connectDB } from "../config/db.js";
 import { registerGracefulShutdown } from "../config/shutdown.js";
 import { downloadObject, uploadObject } from "../services/storage.service.js";
-import { extractAudio, runTranscription } from "../services/transcript.service.js";
+import { extractAudio, hasAudioStream, runTranscription } from "../services/transcript.service.js";
 import { VIDEO_BUCKET } from "../config/minio.js";
 import Video from "../models/video.model.js";
 import { aiQueue } from "../queue/ai.queue.js";
@@ -55,21 +55,36 @@ const transcriptWorker = new Worker(
       // 2. Download original video
       await downloadObject(VIDEO_BUCKET, video.objectKey, localInput);
 
-      // 3. Extract audio
+      // 3. Bail early if the source has no audio track at all. Without this,
+      // ffmpeg fails with a cryptic "Output file does not contain any stream"
+      // error and the transcript latches to "failed". An audio-less video is
+      // functionally the same as a silent one, so mark the transcript completed
+      // (empty) and skip the downstream AI summary & embedding jobs.
+      if (!(await hasAudioStream(localInput))) {
+        await Video.findByIdAndUpdate(videoId, {
+          transcript: { status: "completed", text: "", segments: [] },
+          "aiSummary.status": "skipped",
+          "vectorIndex.status": "skipped",
+        });
+        console.log(`Video ${videoId} has no audio stream; marking transcript empty & skipping AI jobs`);
+        return;
+      }
+
+      // 4. Extract audio
       await extractAudio(localInput, localAudio);
 
-      // 4. Run Python Whisper transcription
+      // 5. Run Python Whisper transcription
       await runTranscription(localAudio, localJson, "tiny");
 
-      // 5. Read output JSON file
+      // 6. Read output JSON file
       const transcriptData = JSON.parse(await fs.promises.readFile(localJson, "utf-8"));
 
-      // 6. Upload transcript JSON to MinIO next to the original video
+      // 7. Upload transcript JSON to MinIO next to the original video
       const prefix = path.posix.dirname(video.objectKey);
       const transcriptKey = `${prefix}/transcript.json`;
       await uploadObject(VIDEO_BUCKET, transcriptKey, localJson);
 
-      // 7. Update Video doc in DB
+      // 8. Update Video doc in DB
       await Video.findByIdAndUpdate(videoId, {
         transcript: {
           status: "completed",
@@ -79,7 +94,7 @@ const transcriptWorker = new Worker(
         },
       });
 
-      // 8. Queue AI summary job — but only if there's actual speech to
+      // 9. Queue AI summary job — but only if there's actual speech to
       // summarize. A silent video yields an empty transcript, so mark the
       // summary "skipped" (a terminal, non-error state) instead of enqueuing a
       // job that would have nothing to work with.

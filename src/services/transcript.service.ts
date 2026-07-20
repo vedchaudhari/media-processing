@@ -10,6 +10,45 @@ import fs from "node:fs";
 import path from "node:path";
 
 /**
+ * Reports whether the source file contains at least one audio stream.
+ *
+ * Some videos (screen recordings, camera clips with the mic off) carry only a
+ * video track. Feeding those to {@link extractAudio} makes ffmpeg fail with a
+ * cryptic "Output file does not contain any stream" error, so callers probe
+ * first and route audio-less inputs into the silent-video path instead.
+ *
+ * @param inputPath  Local path to the source video.
+ * @returns  True if ffprobe finds an audio stream, false otherwise.
+ * @throws   If ffprobe can't be spawned or exits non-zero.
+ */
+export const hasAudioStream = (inputPath: string): Promise<boolean> => {
+  return new Promise((resolve, reject) => {
+    const ffprobe = spawn("ffprobe", [
+      "-v", "error",
+      "-select_streams", "a",          // audio streams only
+      "-show_entries", "stream=index", // print each matching stream's index
+      "-of", "csv=p=0",
+      inputPath,
+    ]);
+
+    let stdout = "";
+    let stderr = "";
+    ffprobe.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    ffprobe.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    ffprobe.on("error", reject);
+    ffprobe.on("close", (code) => {
+      if (code === 0) resolve(stdout.trim().length > 0);
+      else reject(new Error(`ffprobe failed (code ${code}): ${stderr}`));
+    });
+  });
+};
+
+/**
  * Extracts a mono, 16kHz 16-bit PCM WAV file from the source video.
  *
  * Whisper is trained on exactly this format (mono / 16kHz), so feeding it the
