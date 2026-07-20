@@ -1,3 +1,10 @@
+/**
+ * Thumbnail generation — extracts a single poster frame from a video.
+ *
+ * Used by the (non-blocking) thumbnail worker: pick a representative timestamp,
+ * then grab one JPEG frame at it. Kept encoder-agnostic and dependency-free so
+ * it works on any host with ffmpeg.
+ */
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -9,6 +16,11 @@ const execFileAsync = promisify(execFile);
  *
  * Uses -vframes 1 (single frame) + -q:v 2 (high quality JPEG).
  * The scale filter caps the width at 640px, keeping aspect ratio.
+ *
+ * @param inputPath     Local path to the source video.
+ * @param outputPath    Local path to write the JPEG to.
+ * @param timestampSec  Seek position, in seconds (seeked before decode = fast).
+ * @throws  If ffmpeg can't be spawned or exits non-zero.
  */
 export const extractThumbnail = async (
   inputPath: string,
@@ -27,10 +39,15 @@ export const extractThumbnail = async (
 };
 
 /**
- * Picks a timestamp for the thumbnail.
- * - Uses 25% of duration (avoids black intros/outros).
- * - Falls back to 0 if duration is missing.
- * - Clamps to at least 1s (if video is long enough) to skip fade-ins.
+ * Picks the timestamp to grab the thumbnail from.
+ *
+ * Targets 25% into the video — far enough past black intros/title cards to be
+ * representative, without needing to decode the whole file. Clamps to
+ * `duration - 0.1s` so we never seek past the end, and falls back to 0 when
+ * duration is unknown.
+ *
+ * @param duration  Source duration in seconds (from ffprobe); optional.
+ * @returns Seek position in seconds.
  */
 export const pickTimestamp = (duration?: number): number => {
   if (!duration || duration <= 0) return 0;

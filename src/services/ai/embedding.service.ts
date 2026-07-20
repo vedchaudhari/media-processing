@@ -1,3 +1,12 @@
+/**
+ * Text-embedding service backing transcript vector search.
+ *
+ * Turns transcript text into vectors for the Qdrant store. Each provider emits
+ * a different vector dimension, so both the dimension and the collection name
+ * are provider-scoped (see getCollectionName) to prevent mixing incompatible
+ * vectors. For Ollama/default it returns a Qdrant server-side inference config
+ * instead of a raw vector (Qdrant embeds on its side).
+ */
 import { env } from "../../config/envconfig.js";
 import { GoogleGenAI } from "@google/genai";
 
@@ -7,7 +16,8 @@ const ai = new GoogleGenAI({
 
 export class EmbeddingService {
   /**
-   * Returns the vector dimension size based on the active AI provider.
+   * Vector dimension for the active provider: gemini 768, openai 1536,
+   * ollama/default 384 (Qdrant server-side inference).
    */
   static getDimension(): number {
     const provider = env.ai.providerType;

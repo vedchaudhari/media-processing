@@ -1,3 +1,10 @@
+/**
+ * Video API routes, mounted at /api/videos.
+ *
+ * The public, user-facing surface: the upload handshake (initiate/complete),
+ * listing, playback info, and Ask-AI. Thin layer — each route delegates
+ * straight to a controller.
+ */
 import { Router } from "express";
 import {
   initiateUpload,

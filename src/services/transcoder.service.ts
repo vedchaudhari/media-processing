@@ -1,7 +1,16 @@
+/**
+ * FFmpeg transcoding primitives.
+ *
+ * Two responsibilities: build the per-variant HLS encode (encoder-aware, one
+ * rendition at a time) and assemble the master playlist that ties the
+ * renditions together. The transcoder worker orchestrates calls to these; the
+ * ffmpeg-flag choices and their rationale live in the inline comments below.
+ */
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { env } from "../config/envconfig.js";
 
+/** Inputs for encoding one rendition; `segmentDuration` defaults to 6s. */
 interface TranscodeVariantArgs {
   inputPath: string;
   outputDir: string;
@@ -82,6 +91,11 @@ const videoEncoderArgs = (bitrate: number): string[] => {
  * Responsibility: ONE variant only. Uses spawn (not execFile) because
  * transcoding is long-running and streams progress/output to stderr.
  * Resolves on a clean exit (code 0), rejects otherwise.
+ * 
+ * @param args  Input path, output dir, target height/bitrate, segment length.
+ * @returns Resolves when the HLS files are written to `outputDir`.
+ * @throws  If ffmpeg can't be spawned or exits non-zero (message includes the
+ *          tail of stderr).
  */
 export const transcodeVariant = ({
   inputPath,
@@ -144,6 +158,7 @@ export const transcodeVariant = ({
   });
 };
 
+/** One rendition's descriptor for the master playlist (dimensions + bitrate). */
 export interface MasterPlaylistEntry {
   height: number;
   width: number;
@@ -154,6 +169,8 @@ export interface MasterPlaylistEntry {
  * Builds an HLS master playlist that lists every rendition. Each entry points
  * at the variant's playlist via a relative path (`<height>p/playlist.m3u8`),
  * so the master must be uploaded at the root of the `hls/` prefix.
+ * 
+ * @returns The master `.m3u8` contents as a string (caller writes/uploads it).
  */
 export const buildMasterPlaylist = (entries: MasterPlaylistEntry[]): string => {
   const lines = ["#EXTM3U", "#EXT-X-VERSION:3"];

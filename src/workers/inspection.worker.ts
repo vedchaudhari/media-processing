@@ -1,3 +1,15 @@
+/**
+ * Inspection worker — the pipeline's entry stage.
+ *
+ * Consumes "inspect-video" jobs: downloads the original from MinIO, probes it
+ * with ffprobe, saves the metadata, and marks the video "inspected". Then fans
+ * out in parallel to the planner (→ transcoding), thumbnail, and transcript
+ * stages.
+ *
+ * Marks the video "failed" (stage "inspection") only once BullMQ retries are
+ * exhausted, so a transient blip doesn't prematurely fail it. Runs as its own
+ * process (see package.json `worker:inspection`).
+ */
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";

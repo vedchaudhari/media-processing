@@ -8,6 +8,11 @@ const CONTENT_TYPES: Record<string, string> = {
   ".ts": "video/mp2t",
 };
 
+/**
+ * Maps a filename to the HTTP Content-Type header MinIO should store with it,
+ * so browsers/HLS.js receive `.m3u8`/`.ts` files with the right MIME type.
+ * Returns an empty object (no header) for unrecognised extensions.
+ */
 const contentTypeFor = (fileName: string): Record<string, string> => {
   const type = CONTENT_TYPES[path.extname(fileName)];
   return type ? { "Content-Type": type } : {};

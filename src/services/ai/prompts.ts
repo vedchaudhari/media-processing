@@ -1,5 +1,18 @@
+/**
+ * Prompt builders and response sanitizers shared by all AI providers.
+ *
+ * Centralizing the prompt text here keeps every provider producing the same
+ * output shape, so provider classes only differ in transport (HTTP/SDK), not
+ * in what they ask the model.
+ */
 import type { TranscriptSegmentInput } from "./types.js";
 
+/**
+ * Builds the summary prompt: instructs the model to return strict JSON matching
+ * SummaryOutput. Prefers timestamped `segments` (so chapter start times can be
+ * copied verbatim); falls back to plain text. Truncates very long transcripts
+ * to a ~150k-char safety limit to stay within context windows.
+ */
 export const buildSummaryPrompt = (
   transcript: string,
   segments?: TranscriptSegmentInput[]
@@ -42,6 +55,11 @@ Rules for "chapters":
 Your output must be valid JSON and contain NO other text, markdown formatting blocks (like \`\`\`json), or explanations. Just return the JSON object directly.`;
 };
 
+/**
+ * Builds the Q&A prompt: answer strictly from the provided transcript
+ * excerpts, refuse when the answer isn't present, and emit no reasoning/
+ * monologue — just the direct answer.
+ */
 export const buildAskPrompt = (context: string, question: string): string => {
   return `You are an AI video assistant. Answer the user's question based strictly on the provided video transcript excerpts.
 
@@ -61,6 +79,16 @@ Instructions:
 5. Do NOT include any internal thoughts, reasoning steps, planning, or monologue. Output ONLY the direct answer.`;
 };
 
+/**
+ * Strips chain-of-thought leakage from a model's answer.
+ *
+ * Some local/reasoning models emit `<think>...</think>` blocks or plain-text
+ * "Hmm... Final decision:" monologue despite being told not to. This removes
+ * those so only the user-facing answer remains. Defensive by design — safe to
+ * run on output that has no thinking tags at all.
+ *
+ * @returns The cleaned, trimmed text.
+ */
 export function cleanThinkingTags(text: string): string {
   let cleanText = text;
 

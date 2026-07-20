@@ -1,9 +1,19 @@
+/**
+ * Ollama implementation of AIProvider — talks to a local Ollama daemon's
+ * HTTP API for on-device models (the default in development).
+ */
 import type { AIProvider } from "../ai-provider.js";
 import type { SummaryInput, SummaryOutput } from "../types.js";
 import { buildSummaryPrompt, buildAskPrompt, cleanThinkingTags } from "../prompts.js";
 import { env } from "../../../config/envconfig.js";
 
 export class OllamaProvider implements AIProvider {
+  /**
+   * Summarizes a transcript via Ollama's `/api/generate` with `format: "json"`.
+   * Falls back to the model's `thinking` field when `response` is empty, then
+   * strips think-tags/code-fences before parsing JSON.
+   * @throws If Ollama errors, returns no usable content, or emits invalid JSON.
+   */
   async generateSummary(input: SummaryInput): Promise<SummaryOutput> {
     const prompt = buildSummaryPrompt(input.transcript, input.segments);
     const endpoint = env.ai.ollamaEndpoint;
@@ -64,6 +74,10 @@ export class OllamaProvider implements AIProvider {
     return JSON.parse(cleanText) as SummaryOutput;
   }
 
+  /**
+   * Answers a question grounded in transcript excerpts (plain-text response).
+   * @throws If Ollama returns an error response.
+   */
   async askQuestion(context: string, question: string): Promise<string> {
     const prompt = buildAskPrompt(context, question);
     const endpoint = env.ai.ollamaEndpoint;

@@ -1,3 +1,15 @@
+/**
+ * Transcoder worker — the pipeline's last hard step.
+ *
+ * Consumes "transcode-video" jobs: downloads the original, encodes each planned
+ * variant to HLS with bounded concurrency (settleWithConcurrency), uploads the
+ * segments/playlists, builds the master playlist, and marks the video
+ * "completed" — reporting live progress along the way.
+ *
+ * All-or-nothing: if any variant fails it rolls back every object uploaded so
+ * far and marks the video "failed" (stage "transcoding"). Its BullMQ job
+ * concurrency (videos in parallel) is configurable. Runs as its own process.
+ */
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";

@@ -1,3 +1,14 @@
+/**
+ * AI worker — non-blocking side branch (LLM summary).
+ *
+ * Consumes "generate-summary" jobs: reads the transcript text, calls the
+ * configured AI provider for a summary + key takeaways + technologies +
+ * chapters, and stores them. A transcript with no speech is marked "skipped"
+ * (a terminal, non-error state).
+ *
+ * Marks the summary "failed" only once retries are exhausted. Runs as its own
+ * process.
+ */
 import { Worker, type Job } from "bullmq";
 import { redisConnection } from "../config/redis.js";
 import { AI_QUEUE } from "../queue/ai.queue.js";

@@ -1,3 +1,9 @@
+/**
+ * Planner queue — carries "plan-video" jobs (decide the transcode ladder).
+ *
+ * Producer: the inspection worker. Consumer: the planner worker, which then
+ * enqueues transcoding.
+ */
 import { Queue } from "bullmq";
 import { redisConnection } from "../config/redis.js";
 import { defaultJobOptions } from "../config/queueconfig.js";

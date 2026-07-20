@@ -1,3 +1,13 @@
+/**
+ * Planner worker — decides the transcode ladder.
+ *
+ * Consumes "plan-video" jobs: reads the inspected metadata, computes the
+ * rendition variants (planVariants), saves them, marks the video "planned", and
+ * enqueues transcoding. Requires inspection to have run first (needs
+ * metadata.height).
+ *
+ * Marks the video "failed" (stage "planning") on error. Runs as its own process.
+ */
 import { Worker, type Job } from "bullmq";
 import { redisConnection } from "../config/redis.js";
 import { PLANNER_QUEUE } from "../queue/planner.queue.js";

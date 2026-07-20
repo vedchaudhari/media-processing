@@ -1,3 +1,14 @@
+/**
+ * Transcript worker — non-blocking side branch (speech-to-text).
+ *
+ * Consumes "transcribe-video" jobs: downloads the original, extracts audio,
+ * runs the Python Whisper script, uploads transcript.json, and stores the
+ * segments/text. If the video has speech it enqueues the AI-summary and
+ * embedding jobs; a silent video is marked "skipped" for both.
+ *
+ * Marks the transcript "failed" only once retries are exhausted, so the
+ * frontend keeps polling through transient failures. Runs as its own process.
+ */
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";

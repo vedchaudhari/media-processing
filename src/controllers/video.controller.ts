@@ -11,6 +11,13 @@ import { AIService } from "../services/ai/ai.service.js";
 import { EmbeddingService } from "../services/ai/embedding.service.js";
 
 
+/**
+ * Step 1 of upload: reserves a Video record and returns a presigned PUT URL.
+ *
+ * Creates the record in "uploading" state and hands the client a 1-hour
+ * presigned URL to upload the file straight to MinIO — bytes never pass through
+ * the API. The client then calls completeUpload to start processing.
+ */
 export const initiateUpload = async (req: Request, res: Response) => {
   try {
     const { title } = req.body;
@@ -39,6 +46,14 @@ export const initiateUpload = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * Step 2 of upload: confirms the file landed in storage and starts the pipeline.
+ *
+ * Verifies the object exists in MinIO, then atomically flips the record from
+ * "uploading" to "uploaded" and enqueues inspection. The atomic check-and-set
+ * makes this idempotent and race-safe — concurrent or duplicate calls can't
+ * start the pipeline twice.
+ */
 export const completeUpload = async (req: Request, res: Response) => {
   try {
     const { videoId } = req.params;
@@ -204,6 +219,15 @@ export const getPlay = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * Ask-AI endpoint: answers a natural-language question about a video.
+ *
+ * Retrieval-augmented: embeds the question, queries this video's transcript
+ * vectors in Qdrant for the most relevant chunks, and asks the AI provider to
+ * answer strictly from them — returning the answer plus timestamped source
+ * segments. Short-circuits with a friendly message when the vector index is
+ * still pending/failed/skipped or the collection doesn't exist yet.
+ */
 export const askVideo = async (req: Request, res: Response) => {
   try {
     const { videoId } = req.params;

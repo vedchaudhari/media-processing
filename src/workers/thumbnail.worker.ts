@@ -1,3 +1,11 @@
+/**
+ * Thumbnail worker — non-blocking side branch.
+ *
+ * Consumes "generate-thumbnail" jobs: downloads the original, extracts one
+ * poster frame, uploads it, and records the key on the video. Purely additive —
+ * a failure here is logged and retried by BullMQ but never fails the video.
+ * Runs as its own process.
+ */
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";

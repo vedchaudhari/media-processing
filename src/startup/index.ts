@@ -21,6 +21,13 @@ const initStorage = async (): Promise<void> => {
 // status). Swept at startup and then hourly.
 const STALE_UPLOAD_MS = 60 * 60 * 1000;
 
+/**
+ * Marks abandoned uploads as failed.
+ *
+ * A record stuck in "uploading" past the presigned-URL lifetime can never be
+ * completed and would otherwise keep the library page polling forever. Runs at
+ * startup and hourly thereafter (see runStartupTasks).
+ */
 const failStaleUploads = async (): Promise<void> => {
   const cutoff = new Date(Date.now() - STALE_UPLOAD_MS);
   const result = await Video.updateMany(

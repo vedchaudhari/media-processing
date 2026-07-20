@@ -1,3 +1,10 @@
+/**
+ * Qdrant (vector database) client setup.
+ *
+ * Backs transcript semantic search / Ask-AI: the embedding worker upserts
+ * transcript-chunk vectors here, and the /ask endpoint queries them. Warns (but
+ * does not throw) when QDRANT_URL is unset so the rest of the app still boots.
+ */
 import { QdrantClient, type QdrantClientParams } from "@qdrant/js-client-rest";
 import { env } from "./envconfig.js";
 
@@ -13,4 +20,5 @@ if (env.qdrant.apiKey) {
   params.apiKey = env.qdrant.apiKey;
 }
 
+/** The process-wide Qdrant client (config-driven URL + optional API key). */
 export const qdrantClient = new QdrantClient(params);

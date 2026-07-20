@@ -1,3 +1,14 @@
+/**
+ * Embedding worker — non-blocking side branch (vector indexing for Ask-AI).
+ *
+ * Consumes "generate-embeddings" jobs: chunks the transcript segments, embeds
+ * each chunk (EmbeddingService), ensures the dimension-scoped Qdrant collection
+ * exists, and upserts the vectors keyed by videoId. A transcript with no
+ * segments is marked "skipped".
+ *
+ * Marks the vector index "failed" only once retries are exhausted. Runs as its
+ * own process.
+ */
 import { Worker, type Job } from "bullmq";
 import { redisConnection } from "../config/redis.js";
 import { EMBEDDING_QUEUE } from "../queue/embedding.queue.js";
@@ -20,6 +31,12 @@ interface Chunk {
   end: number;
 }
 
+/**
+ * Groups consecutive transcript segments into ~`maxChunkLength`-char chunks,
+ * preserving each chunk's start/end times. Chunking keeps every embedded unit
+ * semantically coherent and within the embedding model's ideal input size,
+ * while the retained timestamps let search results link back to the video.
+ */
 function chunkTranscript(
   segments: Array<{ text: string; start: number; end: number }>,
   maxChunkLength = 500

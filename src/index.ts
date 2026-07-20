@@ -1,3 +1,12 @@
+/**
+ * API server entry point.
+ *
+ * Boots the Express app: configures middleware, exposes a deep /health check
+ * (verifies MongoDB, Redis, and MinIO are reachable), mounts the video routes,
+ * then connects to MongoDB, runs one-time startup tasks, and starts listening.
+ * Registers graceful shutdown for the HTTP server and the inspection queue it
+ * produces to. Workers run as separate processes (see the worker files).
+ */
 import express, { type Request, type Response } from "express";
 import cors from "cors";
 import mongoose from "mongoose";

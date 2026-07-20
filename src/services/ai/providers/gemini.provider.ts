@@ -1,3 +1,6 @@
+/**
+ * Google Gemini implementation of AIProvider (via the @google/genai SDK).
+ */
 import { GoogleGenAI } from "@google/genai";
 import type { AIProvider } from "../ai-provider.js";
 import type { SummaryInput, SummaryOutput } from "../types.js";
@@ -12,6 +15,11 @@ export class GeminiProvider implements AIProvider {
     });
   }
 
+  /**
+   * Summarizes a transcript. Strips any `<think>` blocks and markdown code
+   * fences before parsing the model's text as JSON.
+   * @throws If Gemini returns empty text or the text isn't valid JSON.
+   */
   async generateSummary(input: SummaryInput): Promise<SummaryOutput> {
     const prompt = buildSummaryPrompt(input.transcript, input.segments);
 
@@ -41,6 +49,10 @@ export class GeminiProvider implements AIProvider {
     return JSON.parse(cleanText) as SummaryOutput;
   }
 
+  /**
+   * Answers a question grounded in the given transcript excerpts.
+   * @throws If Gemini returns empty text.
+   */
   async askQuestion(context: string, question: string): Promise<string> {
     const prompt = buildAskPrompt(context, question);
 
