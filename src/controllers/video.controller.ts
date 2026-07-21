@@ -9,6 +9,16 @@ import { inspectionQueue } from "../queue/inspection.queue.js";
 import { qdrantClient } from "../config/qdrant.js";
 import { AIService } from "../services/ai/ai.service.js";
 import { EmbeddingService } from "../services/ai/embedding.service.js";
+import type { IVideo } from "../models/video.model.js";
+import type { AuthTokenPayload } from "../services/auth.service.js";
+
+/**
+ * True if `user` may read/act on `video` — its owner, or any admin. Every
+ * per-video route (besides the owner-setting initiateUpload) checks this
+ * before returning data, so one user can never see another's videos.
+ */
+const canAccessVideo = (video: IVideo, user: AuthTokenPayload): boolean =>
+  video.owner.toString() === user.id || user.role === "admin";
 
 
 /**
@@ -24,8 +34,9 @@ export const initiateUpload = async (req: Request, res: Response) => {
 
     const objectKey = `videos/${uuidv4()}/original.mp4`;
 
-    // create the video record (status defaults to "uploading")
-    const video = await Video.create({ title, objectKey });
+    // create the video record (status defaults to "uploading"), owned by the
+    // authenticated caller (requireAuth guarantees req.user is set)
+    const video = await Video.create({ title, objectKey, owner: req.user!.id });
 
     // presigned PUT url valid for 1 hour
     const uploadUrl = await minioClient.presignedPutObject(
@@ -66,6 +77,10 @@ export const completeUpload = async (req: Request, res: Response) => {
 
     if (!video) {
       return res.status(404).json({ success: false, message: "Video not found" });
+    }
+
+    if (!canAccessVideo(video, req.user!)) {
+      return res.status(403).json({ success: false, message: "Not your video" });
     }
 
     // idempotency guard: only an "uploading" record can be completed. A repeat
@@ -132,9 +147,10 @@ export const completeUpload = async (req: Request, res: Response) => {
  * Lists all videos, newest first. Returns a lightweight projection (no heavy
  * metadata/variants/streaming) suitable for a list/dashboard view.
  */
-export const listVideos = async (_req: Request, res: Response) => {
+export const listVideos = async (req: Request, res: Response) => {
   try {
-    const videos = await Video.find()
+    // only the caller's own videos — the admin API has the cross-user view
+    const videos = await Video.find({ owner: req.user!.id })
       .select("title status progress thumbnail createdAt")
       .sort({ createdAt: -1 })
       .lean();
@@ -176,6 +192,10 @@ export const getPlay = async (req: Request, res: Response) => {
 
     if (!video) {
       return res.status(404).json({ success: false, message: "Video not found" });
+    }
+
+    if (!canAccessVideo(video, req.user!)) {
+      return res.status(403).json({ success: false, message: "Not your video" });
     }
 
     // only a fully transcoded video is playable; surface the current status so
@@ -240,10 +260,18 @@ export const askVideo = async (req: Request, res: Response) => {
     if (!question || typeof question !== "string" || !question.trim()) {
       return res.status(400).json({ message: "Question is required" });
     }
+    // hard cap so a single question can't blow up the LLM call's token cost
+    if (question.length > 2000) {
+      return res.status(400).json({ message: "Question is too long (max 2000 characters)" });
+    }
 
     const video = await Video.findById(videoId);
     if (!video) {
       return res.status(404).json({ message: "Video not found" });
+    }
+
+    if (!canAccessVideo(video, req.user!)) {
+      return res.status(403).json({ message: "Not your video" });
     }
 
     const indexStatus = video.vectorIndex?.status || "completed";

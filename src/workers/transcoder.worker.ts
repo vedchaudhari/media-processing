@@ -31,6 +31,7 @@ import {
 } from "../services/transcoder.service.js";
 import { VIDEO_BUCKET } from "../config/minio.js";
 import { env } from "../config/envconfig.js";
+import { computeOverallProgress } from "../services/progress.service.js";
 import Video, { type IStreamingVariant } from "../models/video.model.js";
 
 /**
@@ -87,7 +88,8 @@ const transcoderWorker = new Worker(
         videoId,
         {
           status: "transcoding",
-          progress: 0,
+          progress: computeOverallProgress("transcoding", 0),
+          "stageTimestamps.transcodingStartedAt": new Date(),
           $unset: { failedStage: "", error: "", failedAt: "" },
         },
         { returnDocument: "after" }
@@ -142,11 +144,15 @@ const transcoderWorker = new Worker(
           );
           uploadedKeys.push(...keys);
 
-          // report progress to BullMQ and persist it on the doc so the API
-          // (and frontend) can show a real % bar while transcoding.
-          const progress = Math.round((++done / total) * 100);
-          await job.updateProgress(progress);
-          await Video.findByIdAndUpdate(videoId, { progress });
+          // report progress to BullMQ (raw % of this stage) and persist the
+          // overall-pipeline progress on the doc so the API/frontend can show
+          // a continuously-moving % bar across the whole pipeline, not just
+          // this stage.
+          const transcodeProgress = Math.round((++done / total) * 100);
+          await job.updateProgress(transcodeProgress);
+          await Video.findByIdAndUpdate(videoId, {
+            progress: computeOverallProgress("transcoding", transcodeProgress),
+          });
 
           return { height, width: widthFor(height), bitrate };
         }
@@ -184,7 +190,8 @@ const transcoderWorker = new Worker(
         {
           streaming: { masterPlaylist: masterKey, variants: streamingVariants },
           status: "completed",
-          progress: 100,
+          progress: computeOverallProgress("completed"),
+          "stageTimestamps.transcodingCompletedAt": new Date(),
         },
         { returnDocument: "after" }
       );

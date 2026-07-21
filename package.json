@@ -1,7 +1,9 @@
 {
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^25.9.2",
     "concurrently": "^10.0.3",
     "tsx": "^4.22.4",
@@ -33,11 +35,13 @@
   "dependencies": {
     "@google/genai": "^2.10.0",
     "@qdrant/js-client-rest": "^1.18.0",
+    "bcryptjs": "^3.0.3",
     "bullmq": "^5.78.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "ioredis": "^5.10.1",
+    "jsonwebtoken": "^9.0.3",
     "minio": "^8.0.7",
     "mongoose": "^9.7.0",
     "uuid": "^14.0.0"

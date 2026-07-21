@@ -23,6 +23,7 @@ import { connectDB } from "../config/db.js";
 import { registerGracefulShutdown } from "../config/shutdown.js";
 import { downloadObject } from "../services/storage.service.js";
 import { inspectVideo } from "../services/ffprobe.service.js";
+import { computeOverallProgress } from "../services/progress.service.js";
 import { VIDEO_BUCKET } from "../config/minio.js";
 import Video from "../models/video.model.js";
 
@@ -41,6 +42,8 @@ const inspectionWorker = new Worker(
       // clear any failure context from a previous attempt (retries reuse the doc)
       await Video.findByIdAndUpdate(videoId, {
         status: "inspecting",
+        progress: computeOverallProgress("inspecting"),
+        "stageTimestamps.inspectionStartedAt": new Date(),
         $unset: { failedStage: "", error: "", failedAt: "" },
       });
 
@@ -58,7 +61,12 @@ const inspectionWorker = new Worker(
 
       const video = await Video.findByIdAndUpdate(
         videoId,
-        { metadata, status: "inspected" },
+        {
+          metadata,
+          status: "inspected",
+          progress: computeOverallProgress("inspected"),
+          "stageTimestamps.inspectionCompletedAt": new Date(),
+        },
         { returnDocument: "after" }
       );
 

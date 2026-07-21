@@ -15,6 +15,7 @@ import { transcoderQueue } from "../queue/transcoder.queue.js";
 import { connectDB } from "../config/db.js";
 import { registerGracefulShutdown } from "../config/shutdown.js";
 import { planVariants } from "../services/planner.service.js";
+import { computeOverallProgress } from "../services/progress.service.js";
 import Video from "../models/video.model.js";
 
 await connectDB();
@@ -29,7 +30,11 @@ const plannerWorker = new Worker(
       // clear any failure context from a previous attempt (retries reuse the doc)
       const video = await Video.findByIdAndUpdate(
         videoId,
-        { status: "planning", $unset: { failedStage: "", error: "", failedAt: "" } },
+        {
+          status: "planning",
+          progress: computeOverallProgress("planning"),
+          $unset: { failedStage: "", error: "", failedAt: "" },
+        },
         { returnDocument: "after" }
       );
 
@@ -47,7 +52,12 @@ const plannerWorker = new Worker(
 
       const planned = await Video.findByIdAndUpdate(
         videoId,
-        { variants, status: "planned" },
+        {
+          variants,
+          status: "planned",
+          progress: computeOverallProgress("planned"),
+          "stageTimestamps.planningCompletedAt": new Date(),
+        },
         { returnDocument: "after" }
       );
 

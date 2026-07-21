@@ -63,6 +63,20 @@ export interface IStreaming {
   variants?: IStreamingVariant[];
 }
 
+/**
+ * When each main-pipeline stage started/finished. Purely observational — no
+ * code branches on these — they exist so the admin dashboard can show
+ * average time-per-stage, which is otherwise uncomputable (only
+ * createdAt/updatedAt/failedAt existed before).
+ */
+export interface IStageTimestamps {
+  inspectionStartedAt?: Date;
+  inspectionCompletedAt?: Date;
+  planningCompletedAt?: Date;
+  transcodingStartedAt?: Date;
+  transcodingCompletedAt?: Date;
+}
+
 /** One timestamped line of the transcript — powers the click-to-seek UI. */
 export interface ITranscriptSegment {
   start: number;
@@ -120,6 +134,9 @@ export type FailedStage = "upload" | "inspection" | "planning" | "transcoding";
 export interface IVideo extends Document {
   title?: string;
   objectKey?: string;
+  // The account that uploaded this video. Every video route scopes reads/
+  // writes to `owner === req.user.id`, except the admin API which sees all.
+  owner: mongoose.Types.ObjectId;
   status: VideoStatus;
   // 0–100 transcoding progress; meaningful while status is "transcoding".
   progress?: number;
@@ -134,6 +151,7 @@ export interface IVideo extends Document {
   failedStage?: FailedStage;
   error?: string;
   failedAt?: Date;
+  stageTimestamps?: IStageTimestamps;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -150,6 +168,7 @@ const videoSchema = new Schema<IVideo>(
   {
     title: { type: String },
     objectKey: { type: String },
+    owner: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
     status: {
       type: String,
       enum: [...VIDEO_STATUSES],
@@ -234,6 +253,13 @@ const videoSchema = new Schema<IVideo>(
     failedStage: { type: String },
     error: { type: String },
     failedAt: { type: Date },
+    stageTimestamps: {
+      inspectionStartedAt: { type: Date },
+      inspectionCompletedAt: { type: Date },
+      planningCompletedAt: { type: Date },
+      transcodingStartedAt: { type: Date },
+      transcodingCompletedAt: { type: Date },
+    },
   },
   {
     timestamps: true,

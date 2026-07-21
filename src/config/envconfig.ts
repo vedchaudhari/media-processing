@@ -10,7 +10,7 @@ dotenv.config();
 // Apply any DNS_SERVERS override now — this MUST run before the Mongo/Redis/
 // MinIO clients are constructed (they all import `env`, so this module fully
 // evaluates first). No-op unless DNS_SERVERS is set. See config/dns.ts.
-// configureDns();
+configureDns();
 
 const minioEndPoint = process.env.MINIO_ENDPOINT || "localhost";
 const minioPort = Number(process.env.MINIO_PORT) || 9000;
@@ -63,4 +63,24 @@ export const env = {
     url: process.env.QDRANT_URL || "",
     apiKey: process.env.QDRANT_API_KEY || "",
   },
+  auth: {
+    // Signs/verifies user JWTs (see services/auth.service.ts). Falls back to a
+    // fixed dev-only secret so local dev works without an .env entry, but that
+    // means every dev checkout trusts the same secret — set JWT_SECRET for any
+    // deployment that isn't just your own machine.
+    jwtSecret: process.env.JWT_SECRET || "dev-only-insecure-secret-change-me",
+    jwtExpiresIn: process.env.JWT_EXPIRES_IN || "7d",
+    // Emails that get promoted to role "admin" on registration, in addition to
+    // the very first user ever created (see auth.service.ts#resolveInitialRole).
+    adminEmails: (process.env.ADMIN_EMAILS || "")
+      .split(",")
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean),
+  },
 } as const;
+
+if (process.env.NODE_ENV === "production" && !process.env.JWT_SECRET) {
+  console.warn(
+    "[envconfig] JWT_SECRET is not set in production — using the insecure dev default. Set JWT_SECRET in .env."
+  );
+}

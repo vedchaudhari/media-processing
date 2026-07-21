@@ -16,6 +16,8 @@ import { redisConnection } from "./config/redis.js";
 import { minioClient, VIDEO_BUCKET } from "./config/minio.js";
 import { registerGracefulShutdown } from "./config/shutdown.js";
 import videoRoutes from "./routes/video.routes.js";
+import authRoutes from "./routes/auth.routes.js";
+import adminRoutes from "./routes/admin.routes.js";
 import { inspectionQueue } from "./queue/inspection.queue.js";
 import { runStartupTasks } from "./startup/index.js";
 
@@ -56,7 +58,9 @@ app.get("/health", async (_req: Request, res: Response) => {
 });
 
 // Routes
+app.use("/api/auth", authRoutes);
 app.use("/api/videos", videoRoutes);
+app.use("/api/admin", adminRoutes);
 
 connectDB()
   .then(runStartupTasks)

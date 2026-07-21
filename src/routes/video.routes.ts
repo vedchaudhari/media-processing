@@ -13,8 +13,13 @@ import {
   listVideos,
   askVideo,
 } from "../controllers/video.controller.js";
+import { requireAuth } from "../middleware/auth.middleware.js";
 
 const router = Router();
+
+// every video route requires a logged-in user; ownership is enforced per-route
+// in the controller (see canAccessVideo in video.controller.ts)
+router.use(requireAuth);
 
 // GET /videos/get-videos
 router.get("/get-videos", listVideos);
