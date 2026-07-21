@@ -8,7 +8,6 @@ import {
   getStats,
   listAllVideos,
   listUsers,
-  updateUserRole,
 } from "../controllers/admin.controller.js";
 import { requireAuth, requireAdmin } from "../middleware/auth.middleware.js";
 
@@ -19,6 +18,5 @@ router.use(requireAuth, requireAdmin);
 router.get("/stats", getStats);
 router.get("/videos", listAllVideos);
 router.get("/users", listUsers);
-router.patch("/users/:userId/role", updateUserRole);
 
 export default router;

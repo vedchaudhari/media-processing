@@ -25,6 +25,11 @@
     "worker:ai": "tsx watch src/workers/ai.worker.ts",
     "worker:embedding": "tsx watch src/workers/embedding.worker.ts",
     "clear:qdrant": "tsx scripts/delete-qdrant.ts",
+    "clear:db": "tsx scripts/clear-database.ts",
+    "clear:redis": "tsx scripts/clear-redis.ts",
+    "clear:minio": "tsx scripts/clear-minio.ts",
+    "clear:all": "tsx scripts/clear-all.ts",
+    "create:admin": "tsx scripts/create-admin.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "node --import tsx --test \"src/**/*.test.ts\""

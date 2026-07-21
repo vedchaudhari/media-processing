@@ -70,12 +70,12 @@ export const env = {
     // deployment that isn't just your own machine.
     jwtSecret: process.env.JWT_SECRET || "dev-only-insecure-secret-change-me",
     jwtExpiresIn: process.env.JWT_EXPIRES_IN || "7d",
-    // Emails that get promoted to role "admin" on registration, in addition to
-    // the very first user ever created (see auth.service.ts#resolveInitialRole).
-    adminEmails: (process.env.ADMIN_EMAILS || "")
-      .split(",")
-      .map((e) => e.trim().toLowerCase())
-      .filter(Boolean),
+    // The single admin account, seeded by `npm run create:admin` (see
+    // scripts/create-admin.ts) — never created through the public register
+    // flow. Registration always yields a plain "user"; there is no in-app
+    // promotion. Both must be set for the seed script to run.
+    adminEmail: (process.env.ADMIN_EMAIL || "").trim().toLowerCase(),
+    adminPassword: process.env.ADMIN_PASSWORD || "",
   },
 } as const;
 

@@ -7,7 +7,6 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { env } from "../config/envconfig.js";
-import User from "../models/user.model.js";
 import type { UserRole } from "../models/user.model.js";
 
 const SALT_ROUNDS = 10;
@@ -45,19 +44,4 @@ export const verifyToken = (token: string): AuthTokenPayload | null => {
   } catch {
     return null;
   }
-};
-
-/**
- * Decides the role a newly-registering email should get: the very first
- * account ever created becomes admin (so a fresh install always has one
- * without a manual DB edit), and any email listed in ADMIN_EMAILS is promoted
- * too. Everyone else starts as a plain "user".
- */
-export const resolveInitialRole = async (email: string): Promise<UserRole> => {
-  const isFirstUser = (await User.countDocuments()) === 0;
-  if (isFirstUser) return "admin";
-
-  if (env.auth.adminEmails.includes(email.toLowerCase())) return "admin";
-
-  return "user";
 };

@@ -4,7 +4,6 @@ import {
   hashPassword,
   verifyPassword,
   signToken,
-  resolveInitialRole,
 } from "../services/auth.service.js";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -19,9 +18,9 @@ const toPublicUser = (user: { _id: unknown; email: string; role: string }) => ({
 /**
  * Creates a new account and returns a JWT for it.
  *
- * The first account ever created (and any email in ADMIN_EMAILS) becomes an
- * admin automatically — see auth.service.ts#resolveInitialRole — so a fresh
- * install always has one without a manual DB edit.
+ * Always creates a plain "user". The single admin account is seeded out of
+ * band by `npm run create:admin` (see scripts/create-admin.ts) and is never
+ * created through this public flow — there is no in-app role promotion.
  */
 export const register = async (req: Request, res: Response) => {
   try {
@@ -42,12 +41,9 @@ export const register = async (req: Request, res: Response) => {
       return res.status(409).json({ message: "Email is already registered" });
     }
 
-    // decide the role BEFORE creating the doc — resolveInitialRole checks
-    // whether any user exists yet, so it must run before this insert
-    const role = await resolveInitialRole(normalizedEmail);
     const passwordHash = await hashPassword(password);
 
-    const user = await User.create({ email: normalizedEmail, passwordHash, role });
+    const user = await User.create({ email: normalizedEmail, passwordHash, role: "user" });
     const token = signToken({ id: user._id.toString(), email: user.email, role: user.role });
 
     return res.status(201).json({ success: true, token, user: toPublicUser(user) });

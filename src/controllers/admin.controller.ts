@@ -136,32 +136,3 @@ export const listUsers = async (_req: Request, res: Response) => {
     return res.status(500).json({ message: "Internal server error" });
   }
 };
-
-/** Promotes or demotes a user's role. */
-export const updateUserRole = async (req: Request, res: Response) => {
-  try {
-    const { userId } = req.params;
-    const { role } = req.body;
-
-    if (role !== "user" && role !== "admin") {
-      return res.status(400).json({ message: "role must be 'user' or 'admin'" });
-    }
-    if (userId === req.user!.id && role !== "admin") {
-      // don't let an admin accidentally lock themselves out with no other admins
-      return res.status(400).json({ message: "You can't demote your own account" });
-    }
-
-    const user = await User.findByIdAndUpdate(userId, { role }, { returnDocument: "after" });
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    return res.status(200).json({
-      success: true,
-      user: { id: user._id, email: user.email, role: user.role },
-    });
-  } catch (error) {
-    console.error("updateUserRole failed:", error);
-    return res.status(500).json({ message: "Internal server error" });
-  }
-};
