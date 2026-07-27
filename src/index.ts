@@ -19,6 +19,7 @@ import videoRoutes from "./routes/video.routes.js";
 import authRoutes from "./routes/auth.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import { inspectionQueue } from "./queue/inspection.queue.js";
+import { closeStatsBroadcast } from "./services/stats-broadcast.service.js";
 import { runStartupTasks } from "./startup/index.js";
 
 const app = express();
@@ -69,8 +70,14 @@ connectDB()
       console.log(`Server running on http://localhost:${PORT}`);
     });
 
-    // close the HTTP server + the queue this process produces to on shutdown
-    registerGracefulShutdown({ server, queues: [inspectionQueue] });
+    // close the HTTP server + the queue this process produces to on shutdown.
+    // The dashboard's SSE streams have to be hung up first — they never end on
+    // their own, so server.close() would otherwise wait for them.
+    registerGracefulShutdown({
+      server,
+      queues: [inspectionQueue],
+      beforeServerClose: closeStatsBroadcast,
+    });
   });
 
 export default app;

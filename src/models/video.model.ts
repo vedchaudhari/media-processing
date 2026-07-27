@@ -8,6 +8,7 @@
  * sub-objects below mirror the outputs of each stage.
  */
 import mongoose, { Schema, Document, Model } from "mongoose";
+import { publishPipelineEvent } from "../services/events.service.js";
 
 // Single source of truth for valid statuses. The TS union and the Mongoose
 // schema `enum` are both derived from this array so they can never drift.
@@ -265,6 +266,32 @@ const videoSchema = new Schema<IVideo>(
     timestamps: true,
   }
 );
+
+/**
+ * Announces every write to this collection so the admin dashboard's SSE stream
+ * can push a fresh snapshot (see services/stats-broadcast.service.ts).
+ *
+ * Hooked at the schema rather than at the ~25 call sites that move a video
+ * through the pipeline: those live across seven worker processes plus the
+ * controllers, and any new stage added later would have to remember to notify.
+ * Here it cannot be forgotten.
+ *
+ * The event carries no data — the API server recomputes the dashboard payload
+ * itself — so a hook firing on a write the dashboard doesn't display costs at
+ * most one redundant, deduplicated refresh.
+ */
+const notifyVideoChanged = (): void => {
+  publishPipelineEvent({ type: "video-changed" });
+};
+
+videoSchema.post("save", notifyVideoChanged);
+videoSchema.post("insertMany", notifyVideoChanged);
+videoSchema.post("findOneAndUpdate", notifyVideoChanged);
+videoSchema.post("findOneAndDelete", notifyVideoChanged);
+videoSchema.post("updateOne", notifyVideoChanged);
+videoSchema.post("updateMany", notifyVideoChanged);
+videoSchema.post("deleteOne", notifyVideoChanged);
+videoSchema.post("deleteMany", notifyVideoChanged);
 
 /** The `Video` model — import this everywhere to query/update video documents. */
 const Video: Model<IVideo> = mongoose.model<IVideo>("Video", videoSchema);

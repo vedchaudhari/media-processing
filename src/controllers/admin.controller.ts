@@ -5,82 +5,47 @@
  * by design, since admins can see everything.
  */
 import { type Request, type Response } from "express";
-import Video, { VIDEO_STATUSES } from "../models/video.model.js";
+import Video from "../models/video.model.js";
 import User from "../models/user.model.js";
-import { inspectionQueue } from "../queue/inspection.queue.js";
-import { plannerQueue } from "../queue/planner.queue.js";
-import { transcoderQueue } from "../queue/transcoder.queue.js";
-import { thumbnailQueue } from "../queue/thumbnail.queue.js";
-import { transcriptQueue } from "../queue/transcript.queue.js";
-import { aiQueue } from "../queue/ai.queue.js";
-import { embeddingQueue } from "../queue/embedding.queue.js";
-
-const QUEUES = {
-  inspection: inspectionQueue,
-  planner: plannerQueue,
-  transcoder: transcoderQueue,
-  thumbnail: thumbnailQueue,
-  transcript: transcriptQueue,
-  ai: aiQueue,
-  embedding: embeddingQueue,
-} as const;
+import { computeAdminStats } from "../services/admin-stats.service.js";
+import { openSseStream } from "../services/sse.service.js";
+import {
+  addStatsClient,
+  removeStatsClient,
+} from "../services/stats-broadcast.service.js";
 
 /**
- * Pipeline-health overview: video counts by status/failedStage, per-queue job
- * counts (waiting/active/failed/etc.), user totals, and the most recent
- * failures across every user's videos — the single screen for "is anything
- * stuck or broken right now."
+ * One-shot pipeline-health overview.
+ *
+ * The dashboard streams these numbers over `/stats/stream` instead of polling
+ * this route, but it's kept as the plain-HTTP path: it's the initial render's
+ * fallback if the stream can't be established (a proxy that buffers
+ * `text/event-stream`, say), and it stays trivially usable from curl.
  */
 export const getStats = async (_req: Request, res: Response) => {
   try {
-    const [statusCounts, failedStageCounts, totalUsers, totalVideos, recentFailures, queueEntries] =
-      await Promise.all([
-        Video.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }]),
-        Video.aggregate([
-          { $match: { failedStage: { $exists: true } } },
-          { $group: { _id: "$failedStage", count: { $sum: 1 } } },
-        ]),
-        User.countDocuments(),
-        Video.countDocuments(),
-        Video.find({ status: "failed" })
-          .select("title failedStage error failedAt owner")
-          .populate("owner", "email")
-          .sort({ failedAt: -1 })
-          .limit(20)
-          .lean(),
-        Promise.all(
-          Object.entries(QUEUES).map(async ([name, queue]) => [
-            name,
-            await queue.getJobCounts("waiting", "active", "delayed", "failed", "completed"),
-          ] as const)
-        ),
-      ]);
-
-    // fill in every status/stage with 0 so the frontend never has to guess
-    // about ones with no videos yet, instead of just the ones that occurred
-    const byStatus: Record<string, number> = Object.fromEntries(
-      VIDEO_STATUSES.map((s) => [s, 0])
-    );
-    for (const row of statusCounts) byStatus[row._id] = row.count;
-
-    const byFailedStage: Record<string, number> = {};
-    for (const row of failedStageCounts) byFailedStage[row._id] = row.count;
-
-    const queues = Object.fromEntries(queueEntries);
-
-    return res.status(200).json({
-      success: true,
-      totalUsers,
-      totalVideos,
-      byStatus,
-      byFailedStage,
-      queues,
-      recentFailures,
-    });
+    const stats = await computeAdminStats();
+    return res.status(200).json({ success: true, ...stats });
   } catch (error) {
     console.error("getStats failed:", error);
     return res.status(500).json({ message: "Internal server error" });
   }
+};
+
+/**
+ * Live pipeline-health stream (SSE).
+ *
+ * Holds the response open and emits a `stats` event with the same payload as
+ * getStats: once immediately on connect, then whenever the pipeline actually
+ * moves. Replaces the dashboard's 5-second poll — see
+ * services/stats-broadcast.service.ts for what drives the pushes.
+ *
+ * This is an ordinary GET, so it inherits requireAuth + requireAdmin from the
+ * router like every other admin route.
+ */
+export const streamStats = (req: Request, res: Response) => {
+  const client = openSseStream(req, res, () => removeStatsClient(client));
+  addStatsClient(client);
 };
 
 /** Lists every video across every user, newest first, paginated. */

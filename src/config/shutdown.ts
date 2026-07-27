@@ -10,6 +10,10 @@ interface ShutdownResources {
   worker?: Worker;
   // Any queues this process produces to, so their resources are released.
   queues?: Queue[];
+  // Runs BEFORE server.close(). Use it to end responses that never finish on
+  // their own — an open SSE stream keeps its socket alive indefinitely, so
+  // server.close() would hang on it until the force-exit timer fires.
+  beforeServerClose?: () => void | Promise<void>;
 }
 
 // How long to wait for a graceful close before forcing exit. A worker draining
@@ -18,8 +22,9 @@ const FORCE_EXIT_MS = 30_000;
 
 /**
  * Registers SIGINT/SIGTERM handlers that close the process's resources in a
- * sane order (stop accepting new work → drain in-flight → disconnect Mongo →
- * quit Redis) so restarts/deploys don't drop jobs or leak connections.
+ * sane order (hang up long-lived streams → stop accepting new work → drain
+ * in-flight → disconnect Mongo → quit Redis) so restarts/deploys don't drop
+ * jobs or leak connections.
  *
  * Idempotent: a second signal while already shutting down is ignored.
  */
@@ -39,6 +44,10 @@ export function registerGracefulShutdown(resources: ShutdownResources = {}): voi
     forceTimer.unref();
 
     try {
+      if (resources.beforeServerClose) {
+        await resources.beforeServerClose();
+      }
+
       if (resources.server) {
         await new Promise<void>((resolve, reject) => {
           resources.server!.close((err) => (err ? reject(err) : resolve()));

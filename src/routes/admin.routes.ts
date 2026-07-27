@@ -6,6 +6,7 @@
 import { Router } from "express";
 import {
   getStats,
+  streamStats,
   listAllVideos,
   listUsers,
 } from "../controllers/admin.controller.js";
@@ -16,6 +17,8 @@ const router = Router();
 router.use(requireAuth, requireAdmin);
 
 router.get("/stats", getStats);
+// Long-lived SSE stream pushing the same payload as /stats whenever it changes.
+router.get("/stats/stream", streamStats);
 router.get("/videos", listAllVideos);
 router.get("/users", listUsers);
 
