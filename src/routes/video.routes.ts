@@ -9,6 +9,8 @@ import { Router } from "express";
 import {
   initiateUpload,
   completeUpload,
+  cancelUpload,
+  retryStage,
   getPlay,
   listVideos,
   askVideo,
@@ -29,6 +31,12 @@ router.post("/initiate-upload", initiateUpload);
 
 // POST /videos/:videoId/complete-upload
 router.post("/:videoId/complete-upload", completeUpload);
+
+// POST /videos/:videoId/cancel-upload
+router.post("/:videoId/cancel-upload", cancelUpload);
+
+// POST /videos/:videoId/retry/:stage
+router.post("/:videoId/retry/:stage", retryStage);
 
 // GET /videos/:videoId/play
 router.get("/:videoId/play", getPlay);

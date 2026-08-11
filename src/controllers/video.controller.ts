@@ -4,8 +4,11 @@ import { v4 as uuidv4 } from "uuid";
 import Video from "../models/video.model.js";
 import { env } from "../config/envconfig.js";
 import { minioClient, VIDEO_BUCKET } from "../config/minio.js";
-import { objectExists } from "../services/storage.service.js";
+import { objectExists, removeObjects } from "../services/storage.service.js";
 import { inspectionQueue } from "../queue/inspection.queue.js";
+import { transcriptQueue } from "../queue/transcript.queue.js";
+import { aiQueue } from "../queue/ai.queue.js";
+import { embeddingQueue } from "../queue/embedding.queue.js";
 import { qdrantClient } from "../config/qdrant.js";
 import { AIService } from "../services/ai/ai.service.js";
 import { EmbeddingService } from "../services/ai/embedding.service.js";
@@ -115,13 +118,17 @@ export const completeUpload = async (req: Request, res: Response) => {
     );
 
     if (!claimed) {
-      // lost the race: another request already completed this video. Report
-      // its current status without enqueuing a duplicate job.
+      // lost the race: another request already completed this video, or it
+      // was cancelled (and deleted) out from under us. Report its current
+      // status without enqueuing a duplicate job.
       const current = await Video.findById(videoId);
+      if (!current) {
+        return res.status(404).json({ success: false, message: "Video was cancelled" });
+      }
       return res.status(200).json({
         success: true,
         videoId,
-        status: current?.status,
+        status: current.status,
       });
     }
 
@@ -139,6 +146,171 @@ export const completeUpload = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("completeUpload failed:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+/**
+ * Cancels an in-progress upload: deletes the "uploading" record outright, as
+ * if it never happened. Safe against the race with completeUpload — only a
+ * record still in "uploading" is deleted, mirroring completeUpload's atomic
+ * check-and-set. Also does a best-effort cleanup of the storage object in
+ * case the file actually finished uploading moments before this arrived.
+ */
+export const cancelUpload = async (req: Request, res: Response) => {
+  try {
+    const { videoId } = req.params;
+
+    if (!videoId || !mongoose.isValidObjectId(videoId)) {
+      return res.status(400).json({ success: false, message: "Invalid video id" });
+    }
+
+    const video = await Video.findById(videoId);
+
+    if (!video) {
+      return res.status(404).json({ success: false, message: "Video not found" });
+    }
+
+    if (!canAccessVideo(video, req.user!)) {
+      return res.status(403).json({ success: false, message: "Not your video" });
+    }
+
+    // Atomic check-and-delete: only remove the record if it's STILL
+    // "uploading". If completeUpload already claimed it, this loses the race
+    // on purpose — the upload is proceeding and cancelling is too late.
+    const deleted = await Video.findOneAndDelete({ _id: videoId, status: "uploading" });
+
+    if (!deleted) {
+      const current = await Video.findById(videoId);
+      return res.status(200).json({
+        success: true,
+        cancelled: false,
+        videoId,
+        status: current?.status,
+      });
+    }
+
+    // Best-effort: the PUT may have finished in storage a moment before this
+    // request landed. Don't let a MinIO hiccup turn a successful cancel into
+    // an error response.
+    try {
+      if (deleted.objectKey && (await objectExists(VIDEO_BUCKET, deleted.objectKey))) {
+        await removeObjects(VIDEO_BUCKET, [deleted.objectKey]);
+      }
+    } catch (cleanupError) {
+      console.error("cancelUpload storage cleanup failed:", cleanupError);
+    }
+
+    return res.status(200).json({ success: true, cancelled: true, videoId });
+  } catch (error) {
+    console.error("cancelUpload failed:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+type RetryStageName = "transcript" | "ai" | "embedding";
+
+/**
+ * Describes how to retry each of the three independent side-branch stages:
+ * which field on the video doc holds its status, which queue/job re-runs it,
+ * and (for the two that depend on the transcript) a precondition that must
+ * hold before re-queueing is meaningful.
+ */
+const RETRY_STAGES: Record<
+  RetryStageName,
+  {
+    field: "transcript" | "aiSummary" | "vectorIndex";
+    queue: typeof transcriptQueue | typeof aiQueue | typeof embeddingQueue;
+    jobName: string;
+    precondition: (video: IVideo) => string | null; // returns an error message, or null if OK
+  }
+> = {
+  transcript: {
+    field: "transcript",
+    queue: transcriptQueue,
+    jobName: "transcribe-video",
+    precondition: () => null,
+  },
+  ai: {
+    field: "aiSummary",
+    queue: aiQueue,
+    jobName: "generate-summary",
+    precondition: (video) =>
+      video.transcript?.status === "completed" && video.transcript.text?.trim()
+        ? null
+        : "Transcript must finish successfully before retrying AI insights.",
+  },
+  embedding: {
+    field: "vectorIndex",
+    queue: embeddingQueue,
+    jobName: "generate-embeddings",
+    precondition: (video) =>
+      video.transcript?.status === "completed" && (video.transcript.segments?.length ?? 0) > 0
+        ? null
+        : "Transcript must finish successfully before retrying Ask AI indexing.",
+  },
+};
+
+/**
+ * Retries one of the three independent side-branch stages (transcript, AI
+ * insights, Ask-AI indexing) after it's reached a terminal "failed" state.
+ * Atomically flips that stage's status from "failed" back to "pending" —
+ * only if it's still "failed" at update time, so a double-click or a second
+ * open tab can't queue the job twice — then re-adds it to the same queue the
+ * automatic pipeline already uses.
+ */
+export const retryStage = async (req: Request, res: Response) => {
+  try {
+    const { videoId, stage } = req.params;
+
+    if (!videoId || !mongoose.isValidObjectId(videoId)) {
+      return res.status(400).json({ success: false, message: "Invalid video id" });
+    }
+
+    const config = RETRY_STAGES[stage as RetryStageName];
+    if (!config) {
+      return res.status(400).json({ success: false, message: "Invalid retry stage" });
+    }
+
+    const video = await Video.findById(videoId);
+
+    if (!video) {
+      return res.status(404).json({ success: false, message: "Video not found" });
+    }
+
+    if (!canAccessVideo(video, req.user!)) {
+      return res.status(403).json({ success: false, message: "Not your video" });
+    }
+
+    const currentStatus = video[config.field]?.status;
+    if (currentStatus !== "failed") {
+      return res.status(409).json({
+        success: false,
+        message: `${stage} is not in a failed state (currently: ${currentStatus ?? "unknown"})`,
+      });
+    }
+
+    const preconditionError = config.precondition(video);
+    if (preconditionError) {
+      return res.status(409).json({ success: false, message: preconditionError });
+    }
+
+    const claimed = await Video.findOneAndUpdate(
+      { _id: videoId, [`${config.field}.status`]: "failed" },
+      { $set: { [`${config.field}.status`]: "pending", [`${config.field}.error`]: undefined } },
+      { returnDocument: "after" }
+    );
+
+    if (!claimed) {
+      // lost the race: another request already claimed this retry.
+      return res.status(409).json({ success: false, message: "Already retrying" });
+    }
+
+    await config.queue.add(config.jobName, { videoId });
+
+    return res.status(200).json({ success: true, stage, status: "pending" });
+  } catch (error) {
+    console.error("retryStage failed:", error);
     return res.status(500).json({ message: "Internal server error" });
   }
 };
