@@ -1,18 +1,10 @@
-/**
- * OpenAI implementation of AIProvider — uses the Responses API
- * (`POST /v1/responses`) over plain fetch.
- */
 import type { AIProvider } from "../ai-provider.js";
 import type { SummaryInput, SummaryOutput } from "../types.js";
 import { buildSummaryPrompt, buildAskPrompt, cleanThinkingTags } from "../prompts.js";
 import { env } from "../../../config/envconfig.js";
 
 export class OpenAIProvider implements AIProvider {
-  /**
-   * Summarizes a transcript using the Responses API in JSON mode
-   * (`text.format: json_object`), then strips fences and parses the result.
-   * @throws If the key is unset, the API errors, or the output isn't valid JSON.
-   */
+
   async generateSummary(input: SummaryInput): Promise<SummaryOutput> {
     const prompt = buildSummaryPrompt(input.transcript, input.segments);
     const apiKey = env.ai.openaiApiKey;
@@ -31,8 +23,7 @@ export class OpenAIProvider implements AIProvider {
       body: JSON.stringify({
         model,
         input: prompt,
-        // Responses API JSON mode. (`response_format` is the Chat Completions
-        // spelling and gets rejected with a 400 here.)
+
         text: { format: { type: "json_object" } },
       }),
     });
@@ -57,7 +48,6 @@ export class OpenAIProvider implements AIProvider {
     let cleanText = (outputTextObj?.text || "").trim();
     cleanText = cleanThinkingTags(cleanText);
 
-    // Safely parse JSON by cleaning markdown fences if present
     if (cleanText.startsWith("```json")) {
       cleanText = cleanText.substring(7);
     }
@@ -72,10 +62,6 @@ export class OpenAIProvider implements AIProvider {
     return JSON.parse(cleanText) as SummaryOutput;
   }
 
-  /**
-   * Answers a question grounded in transcript excerpts (free-text response).
-   * @throws If the key is unset or the API errors.
-   */
   async askQuestion(context: string, question: string): Promise<string> {
     const prompt = buildAskPrompt(context, question);
     const apiKey = env.ai.openaiApiKey;

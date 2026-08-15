@@ -1,15 +1,3 @@
-/**
- * Transcoder worker — the pipeline's last hard step.
- *
- * Consumes "transcode-video" jobs: downloads the original, encodes each planned
- * variant to HLS with bounded concurrency (settleWithConcurrency), uploads the
- * segments/playlists, builds the master playlist, and marks the video
- * "completed" — reporting live progress along the way.
- *
- * All-or-nothing: if any variant fails it rolls back every object uploaded so
- * far and marks the video "failed" (stage "transcoding"). Its BullMQ job
- * concurrency (videos in parallel) is configurable. Runs as its own process.
- */
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
@@ -32,18 +20,10 @@ import {
 import { VIDEO_BUCKET } from "../config/minio.js";
 import { env } from "../config/envconfig.js";
 import { computeOverallProgress } from "../services/progress.service.js";
-import Video, { type IStreamingVariant } from "../models/video.model.js";
+import Video from "../models/video.model.js";
+import type { IStreamingVariant } from "../models/video.types.js";
+import type { TranscodeVideoJob } from "../queue/types.js";
 
-/**
- * Runs `task` over every item with at most `limit` running concurrently, and
- * ALWAYS settles every item (never short-circuits) so the caller can inspect
- * each outcome and roll back side effects. Results are returned in input order.
- *
- * This replaces a bare `Promise.allSettled(items.map(...))`, which would launch
- * one FFmpeg process per variant simultaneously — fine for CPU bursts, but it
- * exceeds NVENC's concurrent-session limit on consumer NVIDIA GPUs and can
- * saturate CPU/RAM for software encodes.
- */
 async function settleWithConcurrency<T, R>(
   items: readonly T[],
   limit: number,
@@ -72,18 +52,17 @@ await connectDB();
 
 const transcoderWorker = new Worker(
   TRANSCODER_QUEUE,
-  async (job: Job) => {
+  async (job: Job<TranscodeVideoJob>) => {
     const { videoId } = job.data;
     const workDir = path.join(os.tmpdir(), `${videoId}-transcode`);
     const inputPath = path.join(workDir, "original.mp4");
 
     console.log(`Transcoding... videoId: ${videoId}`);
 
-    // track objects uploaded so far so we can clean up on failure
     const uploadedKeys: string[] = [];
 
     try {
-      // clear any failure context from a previous attempt (retries reuse the doc)
+
       const video = await Video.findByIdAndUpdate(
         videoId,
         {
@@ -99,29 +78,22 @@ const transcoderWorker = new Worker(
         throw new Error(`Video ${videoId} is not ready for transcoding`);
       }
 
-      // HLS output lives next to the original: videos/<uuid>/hls/...
       const prefix = path.posix.dirname(video.objectKey);
       const hlsPrefix = `${prefix}/hls`;
 
       await fs.promises.mkdir(workDir, { recursive: true });
       await downloadObject(VIDEO_BUCKET, video.objectKey, inputPath);
 
-      // derive each variant's width from the source aspect ratio (fallback 16:9)
       const { width: srcWidth, height: srcHeight } = video.metadata ?? {};
       const widthFor = (h: number): number => {
         const ratio = srcWidth && srcHeight ? srcWidth / srcHeight : 16 / 9;
         const w = Math.round(h * ratio);
-        return w % 2 === 0 ? w : w + 1; // x264 requires even dimensions
+        return w % 2 === 0 ? w : w + 1;
       };
 
       const total = video.variants.length;
       let done = 0;
 
-      // Transcode variants with bounded concurrency. Each one is an independent
-      // FFmpeg process writing to its own folder, so they don't collide, but we
-      // cap how many run at once (NVENC session limits / CPU saturation).
-      // settleWithConcurrency never short-circuits, so `uploadedKeys` is
-      // complete before any rollback runs.
       const results = await settleWithConcurrency(
         video.variants,
         env.transcode.concurrency,
@@ -135,7 +107,6 @@ const transcoderWorker = new Worker(
           const variantDir = path.join(workDir, `${height}p`);
           await fs.promises.mkdir(variantDir, { recursive: true });
 
-          // produce the HLS playlist + segments, then upload the whole folder
           await transcodeVariant({ inputPath, outputDir: variantDir, height, bitrate });
           const keys = await uploadDirectory(
             VIDEO_BUCKET,
@@ -144,10 +115,6 @@ const transcoderWorker = new Worker(
           );
           uploadedKeys.push(...keys);
 
-          // report progress to BullMQ (raw % of this stage) and persist the
-          // overall-pipeline progress on the doc so the API/frontend can show
-          // a continuously-moving % bar across the whole pipeline, not just
-          // this stage.
           const transcodeProgress = Math.round((++done / total) * 100);
           await job.updateProgress(transcodeProgress);
           await Video.findByIdAndUpdate(videoId, {
@@ -158,14 +125,11 @@ const transcoderWorker = new Worker(
         }
       );
 
-      // if any rendition failed, fail the whole job (uploads already rolled
-      // back by the catch via uploadedKeys)
       const rejected = results.find((r) => r.status === "rejected");
       if (rejected) {
         throw (rejected as PromiseRejectedResult).reason;
       }
 
-      // preserve ladder order (allSettled keeps input order)
       const masterEntries: MasterPlaylistEntry[] = [];
       const streamingVariants: IStreamingVariant[] = [];
       for (const result of results) {
@@ -178,7 +142,6 @@ const transcoderWorker = new Worker(
         });
       }
 
-      // build and upload the master playlist that ties the renditions together
       const masterPath = path.join(workDir, "master.m3u8");
       await fs.promises.writeFile(masterPath, buildMasterPlaylist(masterEntries));
       const masterKey = `${hlsPrefix}/master.m3u8`;
@@ -198,9 +161,7 @@ const transcoderWorker = new Worker(
 
       console.log("Transcoded video:", JSON.stringify(completed, null, 2));
     } catch (err) {
-      // all-or-nothing: clean up any partial uploads and fail the whole job.
-      // Cleanup is best-effort — a failure here must NOT prevent marking the
-      // video failed or mask the original error that caused the job to fail.
+
       try {
         await removeObjects(VIDEO_BUCKET, uploadedKeys);
       } catch (cleanupErr) {
@@ -209,10 +170,7 @@ const transcoderWorker = new Worker(
           cleanupErr
         );
       }
-      // Only mark the video "failed" once retries are exhausted. On earlier
-      // attempts BullMQ will retry after a backoff, so leaving the status as-is
-      // keeps the record in an in-progress state instead of briefly advertising
-      // a terminal failure the poller would latch onto.
+
       const isFinalAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
       if (isFinalAttempt) {
         await Video.findByIdAndUpdate(videoId, {
@@ -222,7 +180,7 @@ const transcoderWorker = new Worker(
           failedAt: new Date(),
         });
       }
-      throw err; // let BullMQ record the job as failed (and retry if attempts remain)
+      throw err;
     } finally {
       await fs.promises.rm(workDir, { recursive: true, force: true });
     }
@@ -230,13 +188,10 @@ const transcoderWorker = new Worker(
   { connection: redisConnection, concurrency: env.transcode.jobConcurrency }
 );
 
-// log progress ticks (the values reported via job.updateProgress)
 transcoderWorker.on("progress", (job, progress) => {
   console.log(`Progress... videoId: ${job.data.videoId} -> ${progress}%`);
 });
 
-// drain the in-flight (long-running) transcode and release connections on
-// SIGINT/SIGTERM. close() waits for the active job, capped by the force timer.
 registerGracefulShutdown({ worker: transcoderWorker });
 
 export default transcoderWorker;

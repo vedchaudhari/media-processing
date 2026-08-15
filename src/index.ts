@@ -1,12 +1,3 @@
-/**
- * API server entry point.
- *
- * Boots the Express app: configures middleware, exposes a deep /health check
- * (verifies MongoDB, Redis, and MinIO are reachable), mounts the video routes,
- * then connects to MongoDB, runs one-time startup tasks, and starts listening.
- * Registers graceful shutdown for the HTTP server and the inspection queue it
- * produces to. Workers run as separate processes (see the worker files).
- */
 import express, { type Request, type Response } from "express";
 import cors from "cors";
 import mongoose from "mongoose";
@@ -25,18 +16,13 @@ import { runStartupTasks } from "./startup/index.js";
 const app = express();
 const PORT = env.port;
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Deep health check: verify the dependencies we actually need (MongoDB, Redis,
-// MinIO) rather than blindly returning OK, so a load balancer can route around
-// a wedged instance. Returns 503 if any dependency is unreachable.
 app.get("/health", async (_req: Request, res: Response) => {
   const checks = { mongo: false, redis: false, storage: false };
 
-  // readyState === 1 means "connected"
   checks.mongo = mongoose.connection.readyState === 1;
 
   try {
@@ -58,7 +44,6 @@ app.get("/health", async (_req: Request, res: Response) => {
   });
 });
 
-// Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/videos", videoRoutes);
 app.use("/api/admin", adminRoutes);
@@ -70,9 +55,6 @@ connectDB()
       console.log(`Server running on http://localhost:${PORT}`);
     });
 
-    // close the HTTP server + the queue this process produces to on shutdown.
-    // The dashboard's SSE streams have to be hung up first — they never end on
-    // their own, so server.close() would otherwise wait for them.
     registerGracefulShutdown({
       server,
       queues: [inspectionQueue],

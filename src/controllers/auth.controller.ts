@@ -8,20 +8,12 @@ import {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** Shape returned to the client for the logged-in user — never the passwordHash. */
 const toPublicUser = (user: { _id: unknown; email: string; role: string }) => ({
   id: user._id,
   email: user.email,
   role: user.role,
 });
 
-/**
- * Creates a new account and returns a JWT for it.
- *
- * Always creates a plain "user". The single admin account is seeded out of
- * band by `npm run create:admin` (see scripts/create-admin.ts) and is never
- * created through this public flow — there is no in-app role promotion.
- */
 export const register = async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
@@ -53,7 +45,6 @@ export const register = async (req: Request, res: Response) => {
   }
 };
 
-/** Verifies email/password and returns a fresh JWT. */
 export const login = async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
@@ -64,7 +55,7 @@ export const login = async (req: Request, res: Response) => {
 
     const user = await User.findOne({ email: email.toLowerCase().trim() });
     if (!user || !(await verifyPassword(password, user.passwordHash))) {
-      // don't reveal which of email/password was wrong
+
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
@@ -76,7 +67,6 @@ export const login = async (req: Request, res: Response) => {
   }
 };
 
-/** Returns the currently authenticated user (requires requireAuth to have run). */
 export const getMe = async (req: Request, res: Response) => {
   try {
     const user = await User.findById(req.user!.id);

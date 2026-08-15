@@ -1,15 +1,3 @@
-/**
- * Wipes every document from the MongoDB database (all collections).
- *
- * Run with `npm run clear:db`. Development convenience for resetting to an
- * empty DB — clears videos, users, and any other collections wholesale. Runs
- * immediately with no confirmation (matches scripts/delete-qdrant.ts).
- *
- * NOTE: this only clears MongoDB. It does NOT touch MinIO objects (uploaded
- * originals, HLS output, thumbnails) or Qdrant vectors — after running this
- * those become orphans. Run `npm run clear:qdrant` for vectors, and clear the
- * MinIO bucket separately, if you want a full clean slate.
- */
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import path from "path";

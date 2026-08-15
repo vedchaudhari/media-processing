@@ -1,13 +1,5 @@
-/**
- * Builds the admin dashboard's pipeline-health snapshot.
- *
- * Lives in a service rather than the controller because it now has two
- * consumers: the one-shot `GET /api/admin/stats` request, and the SSE stream
- * that recomputes and pushes it whenever the pipeline moves (see
- * stats-broadcast.service.ts). Both must show identical numbers, so there is
- * exactly one query here.
- */
-import Video, { VIDEO_STATUSES } from "../models/video.model.js";
+import Video from "../models/video.model.js";
+import { VIDEO_STATUSES } from "../models/video.types.js";
 import User from "../models/user.model.js";
 import { inspectionQueue } from "../queue/inspection.queue.js";
 import { plannerQueue } from "../queue/planner.queue.js";
@@ -27,7 +19,6 @@ const QUEUES = {
   embedding: embeddingQueue,
 } as const;
 
-/** The dashboard payload — the body of `GET /stats` and of every `stats` SSE frame. */
 export interface AdminStats {
   totalUsers: number;
   totalVideos: number;
@@ -37,11 +28,6 @@ export interface AdminStats {
   recentFailures: unknown[];
 }
 
-/**
- * Video counts by status/failedStage, per-queue job counts, user totals, and
- * the most recent failures across every user's videos — everything the "is
- * anything stuck or broken right now" screen renders, in one round trip.
- */
 export const computeAdminStats = async (): Promise<AdminStats> => {
   const [statusCounts, failedStageCounts, totalUsers, totalVideos, recentFailures, queueEntries] =
     await Promise.all([
@@ -66,8 +52,6 @@ export const computeAdminStats = async (): Promise<AdminStats> => {
       ),
     ]);
 
-  // fill in every status/stage with 0 so the frontend never has to guess
-  // about ones with no videos yet, instead of just the ones that occurred
   const byStatus: Record<string, number> = Object.fromEntries(
     VIDEO_STATUSES.map((s) => [s, 0])
   );

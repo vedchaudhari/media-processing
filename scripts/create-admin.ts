@@ -1,12 +1,3 @@
-/**
- * Seeds the single admin account from ADMIN_EMAIL / ADMIN_PASSWORD in .env.
- *
- * Run with `npm run create:admin`. This is the ONLY way an admin is created —
- * the public register flow always yields a plain "user" and there is no in-app
- * promotion. Idempotent: if the email already exists it's promoted to admin
- * (password left untouched); if it's already an admin this is a no-op. Safe to
- * re-run.
- */
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import path from "path";
@@ -42,8 +33,7 @@ async function createAdmin() {
   await mongoose.connect(mongoUri);
 
   try {
-    // Talk to the collection directly so this script doesn't depend on the app's
-    // compiled model — it only needs the three fields the schema requires.
+
     const users = mongoose.connection.collection("users");
     const existing = await users.findOne({ email });
 

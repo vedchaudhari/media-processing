@@ -1,11 +1,3 @@
-/**
- * Thumbnail worker — non-blocking side branch.
- *
- * Consumes "generate-thumbnail" jobs: downloads the original, extracts one
- * poster frame, uploads it, and records the key on the video. Purely additive —
- * a failure here is logged and retried by BullMQ but never fails the video.
- * Runs as its own process.
- */
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
@@ -18,12 +10,13 @@ import { downloadObject, uploadObject } from "../services/storage.service.js";
 import { extractThumbnail, pickTimestamp } from "../services/thumbnail.service.js";
 import { VIDEO_BUCKET } from "../config/minio.js";
 import Video from "../models/video.model.js";
+import type { GenerateThumbnailJob } from "../queue/types.js";
 
 await connectDB();
 
 const thumbnailWorker = new Worker(
   THUMBNAIL_QUEUE,
-  async (job: Job) => {
+  async (job: Job<GenerateThumbnailJob>) => {
     const { videoId } = job.data;
     const workDir = path.join(os.tmpdir(), `${videoId}-thumbnail`);
     const localInput = path.join(workDir, "original.mp4");
@@ -43,7 +36,6 @@ const thumbnailWorker = new Worker(
       const timestamp = pickTimestamp(video.metadata?.duration);
       await extractThumbnail(localInput, localOutput, timestamp);
 
-      // Upload thumbnail next to original: videos/<uuid>/thumbnail.jpg
       const prefix = path.posix.dirname(video.objectKey);
       const thumbnailKey = `${prefix}/thumbnail.jpg`;
 
@@ -55,10 +47,9 @@ const thumbnailWorker = new Worker(
 
       console.log(`Thumbnail generated: ${thumbnailKey}`);
     } catch (err) {
-      // Non-blocking: log the error but do NOT update video status to "failed".
-      // The main pipeline (planner → transcoder) continues regardless.
+
       console.error(`Thumbnail generation failed for ${videoId}:`, err);
-      throw err; // let BullMQ retry (3 attempts from defaultJobOptions)
+      throw err;
     } finally {
       await fs.promises.rm(workDir, { recursive: true, force: true });
     }
@@ -66,7 +57,6 @@ const thumbnailWorker = new Worker(
   { connection: redisConnection }
 );
 
-// drain the in-flight job and release connections on SIGINT/SIGTERM
 registerGracefulShutdown({ worker: thumbnailWorker });
 
 export default thumbnailWorker;

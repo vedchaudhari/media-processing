@@ -1,14 +1,3 @@
-/**
- * Embedding worker — non-blocking side branch (vector indexing for Ask-AI).
- *
- * Consumes "generate-embeddings" jobs: chunks the transcript segments, embeds
- * each chunk (EmbeddingService), ensures the dimension-scoped Qdrant collection
- * exists, and upserts the vectors keyed by videoId. A transcript with no
- * segments is marked "skipped".
- *
- * Marks the vector index "failed" only once retries are exhausted. Runs as its
- * own process.
- */
 import { Worker, type Job } from "bullmq";
 import { redisConnection } from "../config/redis.js";
 import { EMBEDDING_QUEUE } from "../queue/embedding.queue.js";
@@ -18,11 +7,10 @@ import Video from "../models/video.model.js";
 import { qdrantClient } from "../config/qdrant.js";
 import { v4 as uuidv4 } from "uuid";
 import { EmbeddingService } from "../services/ai/embedding.service.js";
+import type { GenerateEmbeddingsJob } from "../queue/types.js";
 
 await connectDB();
 
-// Dimension-scoped name (e.g. video_transcripts_768): a provider switch uses a
-// new collection rather than requiring the old one to be deleted.
 const collectionName = EmbeddingService.getCollectionName();
 
 interface Chunk {
@@ -31,12 +19,6 @@ interface Chunk {
   end: number;
 }
 
-/**
- * Groups consecutive transcript segments into ~`maxChunkLength`-char chunks,
- * preserving each chunk's start/end times. Chunking keeps every embedded unit
- * semantically coherent and within the embedding model's ideal input size,
- * while the retained timestamps let search results link back to the video.
- */
 function chunkTranscript(
   segments: Array<{ text: string; start: number; end: number }>,
   maxChunkLength = 500
@@ -71,7 +53,7 @@ function chunkTranscript(
 
 const embeddingWorker = new Worker(
   EMBEDDING_QUEUE,
-  async (job: Job) => {
+  async (job: Job<GenerateEmbeddingsJob>) => {
     const { videoId } = job.data;
     console.log(`[Embeddings] Processing job for videoId: ${videoId}`);
 
@@ -94,19 +76,14 @@ const embeddingWorker = new Worker(
         return;
       }
 
-      // Convert mongoose subdocument array to standard array
       const plainSegments = segments.map(s => ({
         text: s.text ?? "",
         start: s.start ?? 0,
         end: s.end ?? 0,
       }));
 
-      // 1. Chunk transcript segments
       const chunks = chunkTranscript(plainSegments);
 
-      // 2. Ensure the Qdrant collection exists. The name embeds the vector
-      // dimension, so a dimension mismatch is impossible by construction — no
-      // destructive delete-and-recreate needed.
       const collections = await qdrantClient.getCollections();
       const exists = collections.collections.some((c) => c.name === collectionName);
       const expectedDimensions = EmbeddingService.getDimension();
@@ -123,7 +100,6 @@ const embeddingWorker = new Worker(
         });
       }
 
-      // 3. Generate vectors using EmbeddingService
       console.log(`[Embeddings] Generating vectors for ${chunks.length} chunks...`);
       const points = [];
       for (const chunk of chunks) {
@@ -141,7 +117,6 @@ const embeddingWorker = new Worker(
         });
       }
 
-      // 4. Upsert points to Qdrant
       console.log(`[Embeddings] Upserting ${points.length} points to Qdrant...`);
       await qdrantClient.upsert(collectionName, {
         wait: true,
@@ -154,8 +129,7 @@ const embeddingWorker = new Worker(
       });
     } catch (err) {
       console.error(`[Embeddings] Embedding failed for ${videoId}:`, err);
-      // Only mark "failed" once retries are exhausted — an intermediate
-      // "failed" makes the frontend stop polling and miss a later success.
+
       const isFinalAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
       if (isFinalAttempt) {
         await Video.findByIdAndUpdate(videoId, {

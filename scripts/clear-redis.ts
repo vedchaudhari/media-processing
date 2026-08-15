@@ -1,15 +1,3 @@
-/**
- * Flushes the Redis database used by BullMQ.
- *
- * Run with `npm run clear:redis`. Wipes all queue state — waiting/active/
- * delayed jobs plus the completed/failed job history that backs the admin
- * dashboard's queue-depth and failed-job counts. Development convenience for
- * clearing out stale/leftover jobs; runs immediately with no confirmation
- * (matches scripts/delete-qdrant.ts).
- *
- * Stop the API and workers first — flushing Redis out from under a running
- * worker can leave it processing a job whose state just vanished.
- */
 import { Redis } from "ioredis";
 import dotenv from "dotenv";
 import path from "path";

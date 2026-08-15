@@ -1,16 +1,11 @@
-/**
- * Thumbnail queue — carries "generate-thumbnail" jobs.
- *
- * Producer: the inspection worker (fan-out). Consumer: the thumbnail worker.
- * Non-blocking side branch — a failure here never fails the video.
- */
 import { Queue } from "bullmq";
 import { redisConnection } from "../config/redis.js";
 import { defaultJobOptions } from "../config/queueconfig.js";
+import type { GenerateThumbnailJob } from "./types.js";
 
 export const THUMBNAIL_QUEUE = "thumbnail";
 
-export const thumbnailQueue = new Queue(THUMBNAIL_QUEUE, {
+export const thumbnailQueue = new Queue<GenerateThumbnailJob>(THUMBNAIL_QUEUE, {
   connection: redisConnection,
   defaultJobOptions,
 });

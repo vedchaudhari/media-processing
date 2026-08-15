@@ -1,15 +1,3 @@
-/**
- * Deletes every object in the MinIO video bucket.
- *
- * Run with `npm run clear:minio`. Removes all uploaded originals, HLS
- * segments/playlists, thumbnails, and transcripts — but leaves the bucket
- * itself (and its public-read policy) in place, so the app keeps working after.
- * Development convenience; runs immediately with no confirmation (matches
- * scripts/delete-qdrant.ts).
- *
- * NOTE: clears storage only. The matching Video documents in MongoDB will now
- * point at missing objects — run `npm run clear:db` too for a clean slate.
- */
 import * as Minio from "minio";
 import dotenv from "dotenv";
 import path from "path";
@@ -31,11 +19,10 @@ const minioClient = new Minio.Client({
   secretKey: process.env.MINIO_SECRET_KEY || "minioadmin",
 });
 
-/** Collects every object key in the bucket by draining the list stream. */
 function listAllKeys(): Promise<string[]> {
   return new Promise((resolve, reject) => {
     const keys: string[] = [];
-    // recursive:true walks the whole videos/<id>/... prefix tree, not just the top level
+
     const stream = minioClient.listObjectsV2(bucket, "", true);
     stream.on("data", (obj) => {
       if (obj.name) keys.push(obj.name);

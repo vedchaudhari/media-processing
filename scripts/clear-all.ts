@@ -1,17 +1,3 @@
-/**
- * Full clean slate: clears MongoDB, Redis, MinIO, and Qdrant in one command.
- *
- * Run with `npm run clear:all`. Chains the four individual clear scripts so
- * the stores can't drift out of sync (video docs pointing at deleted files,
- * orphaned vectors, stale queue state). Runs immediately with no confirmation.
- *
- * Each step runs even if an earlier one fails — a full reset shouldn't be
- * abandoned halfway just because (say) Qdrant is unreachable — and a summary
- * of what succeeded/failed is printed at the end, exiting non-zero if any step
- * failed.
- *
- * Stop the API and workers before running (see clear-redis.ts).
- */
 import { execSync } from "node:child_process";
 
 const STEPS = [
@@ -26,9 +12,7 @@ const results: Array<{ name: string; ok: boolean }> = [];
 for (const step of STEPS) {
   console.log(`\n──────── Clearing ${step.name} ────────`);
   try {
-    // Delegate to the already-wired npm scripts (single source of truth). Via a
-    // shell so `npm`/`npm.cmd` resolves on every platform; stdio inherited so
-    // each step's own log output streams through live.
+
     execSync(`npm run ${step.npmScript}`, { stdio: "inherit" });
     results.push({ name: step.name, ok: true });
   } catch {
