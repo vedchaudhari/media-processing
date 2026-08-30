@@ -38,6 +38,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@google-cloud/storage": "^8.0.1",
     "@google/genai": "^2.10.0",
     "@qdrant/js-client-rest": "^1.18.0",
     "bcryptjs": "^3.0.3",

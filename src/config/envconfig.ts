@@ -49,7 +49,7 @@ export const env = {
   },
   auth: {
 
-    jwtSecret: process.env.JWT_SECRET || "dev-only-insecure-secret-change-me",
+    jwtSecret: process.env.JWT_SECRET,
     jwtExpiresIn: process.env.JWT_EXPIRES_IN || "7d",
 
     adminEmail: (process.env.ADMIN_EMAIL || "").trim().toLowerCase(),
